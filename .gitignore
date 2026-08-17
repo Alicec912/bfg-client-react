@@ -8,6 +8,8 @@ node_modules/
 .cursor/commands/
 .shared/
 .vercel
+playwright-report/
+test-results/
 next-env.d.ts
 
 # prepare.js copies plugin routes into src/app/.../plugins/<id>/; keep those generated trees untracked.
