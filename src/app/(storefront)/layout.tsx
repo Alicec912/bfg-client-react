@@ -1,3 +1,5 @@
+import { THEME_METADATA } from '@/components/storefront/themes/registry.generated'
+import { getEffectiveTheme } from '@/extensions/skinAvailability'
 import React from 'react'
 // Server: load the plugins this workspace has on; use a plugin storefront layout if provided, else home __root__ override or theme-based layout
 import { headers } from 'next/headers'
@@ -63,7 +65,7 @@ export default async function StorefrontLayoutWrapper({ children }: { children: 
   if (config === null || domainMismatch) {
     redirect('/unknown')
   }
-  const theme = config.theme ?? 'store'
+  const theme = getEffectiveTheme(config.theme, THEME_METADATA, config)
 
   return (
     <ExtensionLoaderProvider extensionIds={extensionIds}>

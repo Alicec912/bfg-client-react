@@ -15,7 +15,7 @@ const getServerExtensions = cache(() => loadPluginExtensions())
  * With pluginIds (client): loads only those plugins.
  */
 export async function loadExtensions(pluginIds?: string[]): Promise<Extension[]> {
-  if (pluginIds !== undefined && pluginIds.length > 0) {
+  if (pluginIds !== undefined) {
     return loadPluginExtensions(pluginIds)
   }
   return getServerExtensions()

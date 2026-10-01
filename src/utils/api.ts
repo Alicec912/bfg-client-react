@@ -406,7 +406,7 @@ export async function apiFetch<T>(
     headers['X-Workspace-ID'] = workspaceId
   }
 
-  // Split-host production: browser is on preloved.kiwi but API is api.preloved.kiwi.
+  // Split-host production: the browser and API use different origins.
   // WorkspaceMiddleware resolves tenant from Host / X-Forwarded-Host via WorkspaceDomain.
   // When there is no X-Workspace-ID (no localStorage / env pin), send the site hostname so
   // the API can resolve workspace without trusting api.* as a tenant domain.

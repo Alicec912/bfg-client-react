@@ -16,7 +16,7 @@ import {
 } from '@/utils/seo'
 import ProductDetailPage from '@views/storefront/ProductDetailPage'
 import type { Metadata } from 'next'
-import { getBrandLegacyPath, getBrandSite } from '@/utils/brandSites'
+import { getStorefrontServerProvider } from '@/extensions/storefrontServer'
 
 type Props = {
   params: Promise<{ id: string }>
@@ -225,12 +225,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const locale = headersList.get('x-locale') || 'en'
   const requestHost = headersList.get('host') ?? undefined
   const config = await getStorefrontConfigForServer(locale, requestHost).catch(() => null)
-  const brand = getBrandSite(config)
-  if (brand) {
-    const path = getBrandLegacyPath(brand, 'products', id)
-    if (!path) return { title: 'Product not found', robots: { index: false, follow: false } }
+  const provider = await getStorefrontServerProvider(config)
+  const decision = provider?.legacyRoute?.('product', id, { config, locale, requestHost, origin: '' })
+  if (decision?.notFound) return { title: 'Product not found', robots: { index: false, follow: false } }
+  if (decision?.redirect) {
     const origin = await getRequestOrigin()
-    return { alternates: { canonical: `${origin}${path}` }, robots: { index: false, follow: true } }
+    return { alternates: { canonical: `${origin}${decision.redirect}` }, robots: { index: false, follow: true } }
   }
   const [product, { site_name }, origin] = await Promise.all([
     getProductForServer(id, requestHost),
@@ -283,12 +283,10 @@ export default async function Page(props: Props) {
   const locale = headersList.get('x-locale') || 'en'
   const requestHost = headersList.get('host') ?? undefined
   const config = await getStorefrontConfigForServer(locale, requestHost).catch(() => null)
-  const brand = getBrandSite(config)
-  if (brand) {
-    const path = getBrandLegacyPath(brand, 'products', id)
-    if (!path) notFound()
-    permanentRedirect(path)
-  }
+  const provider = await getStorefrontServerProvider(config)
+  const decision = provider?.legacyRoute?.('product', id, { config, locale, requestHost, origin: '' })
+  if (decision?.notFound) notFound()
+  if (decision?.redirect) permanentRedirect(decision.redirect)
 
   const [lookup, origin] = await Promise.all([
     getProductLookup(id, requestHost),

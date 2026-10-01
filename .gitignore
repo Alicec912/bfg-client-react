@@ -36,3 +36,12 @@ public/plugins/
 
 .env*.local
 .claude/settings.local.json
+
+# Public files copied from installed plugins are generated artifacts.
+src/.plugin-public-assets.json
+src/.plugin-public-mounts.json
+
+/src/.plugin-route-rewrites.json
+/src/.plugin-route-control.json
+/src/.plugin-public-control.json
+/node_modules

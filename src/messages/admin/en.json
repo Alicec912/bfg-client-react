@@ -2285,7 +2285,7 @@
           "taxIdPlaceholder": "e.g. 123-456-789 (printed on invoices)",
           "registrationNumber": "Registration Number",
           "invoiceNote": "Invoice Note",
-          "invoiceNotePlaceholder": "Enter payment instructions, bank details, or other information to display on invoices.\n\nExample:\nASB Bank\nSurlex Limited\n12-3484-0026365-00\n\nPlease use the following reference when making payment:\n- Particular: [Company Name]\n- Reference: [Invoice Number]\n- Code: [Customer Number]",
+          "invoiceNotePlaceholder": "Enter payment instructions, bank details, or other information to display on invoices.\n\nExample:\n[Bank Name]\n[Account Name]\n[Account Number]\n\nPlease use the following reference when making payment:\n- Particular: [Company Name]\n- Reference: [Invoice Number]\n- Code: [Customer Number]",
           "isDefault": "Default",
           "isActive": "Active"
         }

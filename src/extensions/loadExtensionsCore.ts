@@ -2,11 +2,11 @@ import type { Extension } from './registry'
 import { PLUGIN_LOADERS } from '@/plugins/loaders.generated'
 
 function getEnabledPluginIds(pluginIds?: string[]): string[] {
-  if (pluginIds && pluginIds.length > 0) return pluginIds
+  if (pluginIds !== undefined) return pluginIds
   const envPlugins =
-    process.env.ENABLED_PLUGINS || process.env.NEXT_PUBLIC_ENABLED_PLUGINS
+    process.env.ENABLED_PLUGINS ?? process.env.NEXT_PUBLIC_ENABLED_PLUGINS
   const fromEnv = envPlugins?.split(',').map((p) => p.trim()).filter(Boolean) ?? []
-  if (fromEnv.length > 0) return fromEnv
+  if (envPlugins !== undefined) return fromEnv
   // Default: load every plugin in loaders.generated.ts (see client README)
   return Object.keys(PLUGIN_LOADERS)
 }

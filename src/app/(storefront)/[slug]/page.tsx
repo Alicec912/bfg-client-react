@@ -9,7 +9,7 @@ import { getStorefrontConfigForServer } from '@/utils/storefrontConfig'
 import { resolveStorefrontPage } from '@/components/storefront/themes/resolve'
 import DynamicPage from '@views/storefront/DynamicPage'
 import type { Metadata } from 'next'
-import { brandImagePath, getBrandSite, isBrandHomeAlias } from '@/utils/brandSites'
+import { getStorefrontServerProvider } from '@/extensions/storefrontServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,21 +42,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     getSiteConfig(locale, requestHost),
     getRequestOrigin(),
   ])
-  const brand = getBrandSite(config)
-  if (isBrandHomeAlias(config, slug)) return { alternates: { canonical: origin || '/' }, robots: { index: false, follow: true } }
+  const provider = await getStorefrontServerProvider(config)
+  const presentation = provider?.cmsPresentation?.(slug, { config, locale, requestHost, origin })
+  if (presentation?.redirect) return { alternates: { canonical: origin || '/' }, robots: { index: false, follow: true } }
   if (!pageData) return { title: 'Not found', robots: { index: false, follow: false } }
   const title = (pageData?.meta_title || pageData?.title || slug) as string
   const description =
     clampDescription((pageData?.meta_description || pageData?.excerpt) as string | undefined) ||
     `${title} – ${site_name}`
   const canonical = origin ? `${origin}/${slug}` : `/${slug}`
-  const section = slug === 'projects' ? 'projects' : slug === 'services' ? 'service' : slug === 'products' ? 'parts' : null
-  const brandImage = brand && section
-    ? brand.posts.find(post => post.path.startsWith(`/${section}/`))?.image
-    : undefined
-  const images = brand && brandImage
-    ? [{ url: `${origin}${brandImagePath(brand, brandImage, 1600)}`, alt: title }]
-    : undefined
+  const images = presentation?.images
 
   return {
     // Imported SEO titles may already include the site name.
@@ -84,22 +79,17 @@ export default async function StorefrontSlugPage({ params }: Props) {
   const locale = await getLocale()
   const requestHost = (await headers()).get('host') ?? undefined
   const config = await getStorefrontConfigForServer(locale, requestHost)
-  const brand = getBrandSite(config)
-  if (isBrandHomeAlias(config, slug)) permanentRedirect('/')
+  const provider = await getStorefrontServerProvider(config)
+  const presentation = provider?.cmsPresentation?.(slug, { config, locale, requestHost, origin: await getRequestOrigin() })
+  if (presentation?.redirect) permanentRedirect(presentation.redirect)
+  if (presentation?.notFound) notFound()
   const rawPageData = await getPageData(slug, locale, requestHost, config?.languages)
   if (!rawPageData || !rawPageData.blocks?.length) {
     notFound()
   }
   const pageData = await resolveCmsBlocks(rawPageData, requestHost, locale)
-  const listLabel = slug === 'projects' ? 'Projects' : slug === 'services' ? 'Services' : slug === 'products' ? 'Parts' : null
-  const breadcrumb = brand && listLabel ? (
-    <script
-      type='application/ld+json'
-      dangerouslySetInnerHTML={{ __html: jsonLdScript(buildBreadcrumbJsonLd(await getRequestOrigin(), [
-        { name: 'Home', path: '/' },
-        { name: listLabel, path: `/${slug}` },
-      ])) }}
-    />
+  const breadcrumb = presentation?.breadcrumbs?.length ? (
+    <script type='application/ld+json' dangerouslySetInnerHTML={{ __html: jsonLdScript(buildBreadcrumbJsonLd(await getRequestOrigin(), presentation.breadcrumbs)) }} />
   ) : null
 
   const Override = await resolveStorefrontPage('cms')
