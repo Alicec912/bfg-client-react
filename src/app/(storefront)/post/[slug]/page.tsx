@@ -1,13 +1,14 @@
 import { getLocale } from 'next-intl/server'
 import { headers } from 'next/headers'
 import Image from 'next/image'
+import './post.css'
 import { notFound, permanentRedirect } from 'next/navigation'
 import { getSiteConfig } from '@/utils/siteMetadata'
 import { getRequestOrigin, clampDescription } from '@/utils/seo'
 import { getStorefrontConfigForServer } from '@/utils/storefrontConfig'
 import { fetchRenderedCmsPost } from '@/services/storefrontCmsApi'
 import type { Metadata } from 'next'
-import { getBrandPost, getBrandSite } from '@/utils/brandSites'
+import { getStorefrontServerProvider } from '@/extensions/storefrontServer'
 
 export const revalidate = 60
 
@@ -33,12 +34,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const locale = await getLocale()
   const requestHost = (await headers()).get('host') ?? undefined
   const config = await getStorefrontConfigForServer(locale, requestHost)
-  const brand = getBrandSite(config)
-  const brandPost = brand ? getBrandPost(brand, slug) : undefined
-  if (brand && !brandPost) return { title: 'Not found', robots: { index: false, follow: false } }
-  if (brandPost) {
+  const provider = await getStorefrontServerProvider(config)
+  const decision = provider?.legacyRoute?.('post', slug, { config, locale, requestHost, origin: '' })
+  if (decision?.notFound) return { title: 'Not found', robots: { index: false, follow: false } }
+  if (decision?.redirect) {
     const origin = await getRequestOrigin()
-    return { alternates: { canonical: `${origin}${brandPost.path}` }, robots: { index: false, follow: true } }
+    return { alternates: { canonical: `${origin}${decision.redirect}` }, robots: { index: false, follow: true } }
   }
   const [postData, { site_name }, origin] = await Promise.all([
     getPostData(slug, locale, requestHost, config?.languages),
@@ -67,10 +68,10 @@ export default async function StorefrontPostPage({ params }: Props) {
   const locale = await getLocale()
   const requestHost = (await headers()).get('host') ?? undefined
   const config = await getStorefrontConfigForServer(locale, requestHost)
-  const brand = getBrandSite(config)
-  const brandPost = brand ? getBrandPost(brand, slug) : undefined
-  if (brandPost) permanentRedirect(brandPost.path)
-  if (brand) notFound()
+  const provider = await getStorefrontServerProvider(config)
+  const decision = provider?.legacyRoute?.('post', slug, { config, locale, requestHost, origin: '' })
+  if (decision?.redirect) permanentRedirect(decision.redirect)
+  if (decision?.notFound) notFound()
   const post = await getPostData(slug, locale, requestHost, config?.languages)
 
   if (!post) {
@@ -83,9 +84,9 @@ export default async function StorefrontPostPage({ params }: Props) {
 
   return (
     <article>
-      <section className='nzcba-page-hero'>
-        <div className='nzcba-page-hero__inner'>
-          <p className='nzcba-eyebrow'>{post.category_name || 'Association Update'}</p>
+      <section className='storefront-post-page-hero'>
+        <div className='storefront-post-page-hero__inner'>
+          <p className='storefront-post-eyebrow'>{post.category_name || 'Article'}</p>
           <h1>{post.title}</h1>
           {post.published_at && (
             <p>
@@ -95,8 +96,8 @@ export default async function StorefrontPostPage({ params }: Props) {
           )}
         </div>
       </section>
-      <section className='nzcba-section nzcba-section--white'>
-        <div className='nzcba-section__inner'>
+      <section className='storefront-post-section storefront-post-section--white'>
+        <div className='storefront-post-section__inner'>
           {imageUrl && (
             <Image
               src={imageUrl}
@@ -107,7 +108,7 @@ export default async function StorefrontPostPage({ params }: Props) {
             />
           )}
           <div
-            className='nzcba-rich-text'
+            className='storefront-post-rich-text'
             dangerouslySetInnerHTML={{ __html: post.content || post.excerpt || '' }}
           />
         </div>

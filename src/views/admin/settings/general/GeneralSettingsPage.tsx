@@ -59,6 +59,8 @@ import {
 import { getCurrencies, type Currency } from '@/services/finance'
 import { clearStorefrontConfigCache } from '@/utils/storefrontConfig'
 import { THEME_METADATA, THEME_REGISTRY } from '@/components/storefront/themes/registry.generated'
+import { isSkinEnabled } from '@/extensions/skinAvailability'
+import { useStaffMemberContext } from '@/contexts/StaffMemberContext'
 import { bfgApi } from '@/utils/api'
 import { usePageSlots } from '@/extensions/hooks/usePageSections'
 import { useTabQueryParam } from '@/hooks/useTabQueryParam'
@@ -307,6 +309,13 @@ const GeneralSettingsPage = () => {
   const [workspaceId, setWorkspaceId] = useState<number | null>(null)
   const [workspaceOrgName, setWorkspaceOrgName] = useState('')
   const [workspaceSlug, setWorkspaceSlug] = useState('')
+  const { extensions: workspaceExtensions } = useStaffMemberContext()
+  const availableThemeIds = THEME_IDS.filter(id => isSkinEnabled(THEME_METADATA[id], {workspace_slug:workspaceSlug, extensions:workspaceExtensions}))
+  const availableThemeGroups = Object.entries(THEME_GROUPS).reduce<Record<string, {name:string; ids:string[]}>>((result, [owner, group]) => {
+    const ids = group.ids.filter(id => availableThemeIds.includes(id))
+    if (ids.length) result[owner] = {...group, ids}
+    return result
+  }, {})
   const [adminIdentityEditing, setAdminIdentityEditing] = useState(false)
   const [draftOrgName, setDraftOrgName] = useState('')
   const [draftSlug, setDraftSlug] = useState('')
@@ -1347,10 +1356,10 @@ const GeneralSettingsPage = () => {
                           select
                           fullWidth
                           label={t('settings.general.basic.fields.storefrontTheme.label')}
-                          value={THEME_IDS.includes(storefrontUi.theme) ? storefrontUi.theme : THEME_IDS[0] ?? 'store'}
+                          value={availableThemeIds.includes(storefrontUi.theme) ? storefrontUi.theme : 'store'}
                           onChange={e => handleStorefrontUiChange('theme', e.target.value)}
                         >
-                          {Object.entries(THEME_GROUPS).map(([extensionId, group]) => [
+                          {Object.entries(availableThemeGroups).map(([extensionId, group]) => [
                             <ListSubheader
                               key={`extension-${extensionId}`}
                               sx={{

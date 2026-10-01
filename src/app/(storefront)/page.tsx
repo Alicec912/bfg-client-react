@@ -1,3 +1,4 @@
+import { getEffectiveTheme } from '@/extensions/skinAvailability'
 import React from 'react'
 import { getLocale } from 'next-intl/server'
 import { headers } from 'next/headers'
@@ -19,12 +20,12 @@ import { getStorefrontConfigForServer } from '@/utils/storefrontConfig'
 import { fetchRenderedCmsPage } from '@/services/storefrontCmsApi'
 import { resolveCmsBlocks } from '@/utils/resolveCmsBlocks'
 import StorefrontDevBadge from '@components/storefront/StorefrontDevBadge'
-import { HOME_REGISTRY } from '@/components/storefront/themes/registry.generated'
+import { HOME_REGISTRY, THEME_METADATA } from '@/components/storefront/themes/registry.generated'
 import { resolveStorefrontPage } from '@/components/storefront/themes/resolve'
 import DynamicPage from '@views/storefront/DynamicPage'
 import HomePage from '@views/storefront/HomePage'
 import type { Metadata } from 'next'
-import { brandBusinessJsonLd, brandImagePath, getBrandSite } from '@/utils/brandSites'
+import { getStorefrontServerProvider } from '@/extensions/storefrontServer'
 
 // 60s ISR instead of fully dynamic: the homepage was re-rendering on every request
 // (TTFB ~1.5s), which hurts Core Web Vitals and burns crawl budget. CMS edits go live
@@ -42,7 +43,7 @@ export async function generateMetadata(): Promise<Metadata> {
   ])
 
   const siteName = config?.site_name?.trim() || 'Home'
-  const brand = getBrandSite(config)
+  const provider = await getStorefrontServerProvider(config)
   // The CMS home page carries hand-written meta fields; they are the most specific source
   // and were previously ignored in favour of the generic site description.
   const description =
@@ -50,10 +51,7 @@ export async function generateMetadata(): Promise<Metadata> {
   // A bare site name ranks for nothing, so a store should set the CMS page's meta_title to
   // something that says what it sells. Only that field can know — this file cannot invent it.
   const title = pageData?.meta_title?.trim() || siteName
-  const brandImage = brand?.posts[0]?.image
-  const images = brand && brandImage
-    ? [{ url: `${origin}${brandImagePath(brand, brandImage, 1600)}`, alt: siteName }]
-    : undefined
+  const images = provider?.homeImages?.({ config, locale, requestHost, origin })
 
   return {
     // `absolute` opts out of the root '%s | siteName' template so the homepage title
@@ -85,7 +83,7 @@ async function getPageData(slug: string, locale: string, requestHost?: string, l
  * Organization + WebSite graph. This is the entity block search and generative engines read to
  * answer "who is this store" — emitted once, on the homepage, and referenced by @id elsewhere.
  */
-function SiteJsonLd({
+async function SiteJsonLd({
   origin,
   config,
   locale,
@@ -98,9 +96,9 @@ function SiteJsonLd({
   // No origin means no absolute @id, and no site name means no entity worth describing.
   if (!origin || !siteName) return null
   const description = clampDescription(config?.site_description, 5000) || undefined
-  const brand = getBrandSite(config)
+  const provider = await getStorefrontServerProvider(config)
   const graph = [
-    brand ? brandBusinessJsonLd(brand, origin) : buildOrganizationJsonLd(origin, {
+    provider?.organizationJsonLd?.({ config, locale, origin }) || buildOrganizationJsonLd(origin, {
       siteName,
       description,
       email: config?.contact_email || undefined,
@@ -126,7 +124,7 @@ export default async function Page() {
   const config = await getStorefrontConfigForServer(locale, requestHost)
   if (config === null) return null
   const origin = await getRequestOrigin()
-  const theme = config.theme ?? 'store'
+  const theme = getEffectiveTheme(config.theme, THEME_METADATA, config)
   const rawPageData = await getPageData('home', locale, requestHost, config.languages)
   // Fill in product/category grids before render so they appear in the SSR HTML.
   const pageData = await resolveCmsBlocks(rawPageData, requestHost, locale)

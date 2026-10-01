@@ -3,8 +3,7 @@ import { isIndexableHost } from '@/utils/indexable'
 import { getRequestOrigin } from '@/utils/seo'
 import { storefrontApi } from '@/utils/storefrontApi'
 import { getStorefrontConfigForServer } from '@/utils/storefrontConfig'
-import { fetchRenderedCmsPost } from '@/services/storefrontCmsApi'
-import { getBrandSite } from '@/utils/brandSites'
+import { getStorefrontServerProvider } from '@/extensions/storefrontServer'
 import type { MetadataRoute } from 'next'
 
 export const revalidate = 3600
@@ -74,10 +73,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const locale = headersList.get('x-locale') || 'en'
 
   const config = await getStorefrontConfigForServer(locale, requestHost).catch(() => null)
-  const brand = getBrandSite(config)
-  // Brand sites use an explicit, workspace/theme-scoped CMS allow-list. Do not call
-  // authenticated/admin post lists anonymously; verify each public rendered URL instead.
-  const [categoriesRes, productList] = brand
+  const provider = await getStorefrontServerProvider(config)
+  const contribution = await provider?.sitemap?.({ config, locale, requestHost, origin })
+  const [categoriesRes, productList] = contribution?.includeCatalogue === false
     ? [null, []]
     : await Promise.all([
         storefrontApi
@@ -119,30 +117,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     entries.push(entry(url, 'monthly', 0.5))
   }
 
-  if (brand) {
-    const published = await Promise.all(brand.posts.map(async item => {
-      const post = await fetchRenderedCmsPost(item.slug, locale, requestHost, {
-        revalidate: 3600,
-        languages: config?.languages,
-      })
-      return post ? { item, post } : null
-    }))
-    for (const result of published) {
-      if (!result) continue
-      const url = `${origin}${result.item.path}`
-      if (seen.has(url)) continue
-      seen.add(url)
-      entries.push(entry(url, 'monthly', 0.7, result.post.updated_at ?? result.post.published_at ?? undefined))
-    }
-    if (brand.slug === 'ultimate-space-design') {
-      for (const category of ['residential', 'commercial']) {
-        const url = `${origin}/projects/${category}`
-        if (!seen.has(url)) {
-          seen.add(url)
-          entries.push(entry(url, 'monthly', 0.6))
-        }
-      }
-    }
+  for (const extra of contribution?.entries || []) {
+    if (!extra.url.startsWith(`${origin}/`)) throw new Error('Extension sitemap entries must use the current origin.')
+    if (seen.has(extra.url)) continue
+    seen.add(extra.url); entries.push(extra)
   }
 
   return entries

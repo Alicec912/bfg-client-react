@@ -2285,7 +2285,7 @@
           "taxIdPlaceholder": "例如 123-456-789（会印在发票上）",
           "registrationNumber": "注册号",
           "invoiceNote": "发票备注",
-          "invoiceNotePlaceholder": "输入付款说明、银行信息或其他需要在发票上显示的信息。\n\n示例：\nASB Bank\nSurlex Limited\n12-3484-0026365-00\n\n付款时请使用以下信息：\n- Particular: [公司名称]\n- Reference: [发票号]\n- Code: [客户编号]",
+          "invoiceNotePlaceholder": "输入付款说明、银行信息或其他需要在发票上显示的信息。\n\n示例：\n[银行名称]\n[账户名称]\n[银行账号]\n\n付款时请使用以下信息：\n- Particular: [公司名称]\n- Reference: [发票号]\n- Code: [客户编号]",
           "isDefault": "默认",
           "isActive": "启用"
         }

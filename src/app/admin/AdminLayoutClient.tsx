@@ -9,6 +9,7 @@ import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import { AppLayoutProvider } from '@/contexts/LayoutSettingsContext'
 import { ExtensionLoaderProvider, useExtensions } from '@/extensions/context'
+import { PLUGIN_ROUTE_OWNERS } from '@/plugins/route-owners.generated'
 import { isExtensionEnabled } from '@/extensions/availability'
 import { applyNavExtensions } from '@/extensions/utils/applyNavExtensions'
 import D365StyleLayout from '@/components/admin/layout/D365StyleLayout'
@@ -79,9 +80,9 @@ function AdminShell({
     [baseNavItems, loaded]
   )
 
-  const pluginSegment = pathname?.split('/')[2] ?? ''
-  const onDisabledPluginPage =
-    extensionIds.includes(pluginSegment) && !isExtensionEnabled(pluginSegment, extensions)
+  const owner = PLUGIN_ROUTE_OWNERS.find(route => pathname === route.prefix || pathname?.startsWith(route.prefix + '/'))
+  const { loading } = useStaffMemberContext()
+  const onDisabledPluginPage = !!owner && (loading || !extensionIds.includes(owner.id) || !isExtensionEnabled(owner.id, extensions))
 
   // The read-only notice belongs to the shell, not to any page: every back-office
   // page is equally affected, and stating it once here is what keeps the pages

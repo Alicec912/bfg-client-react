@@ -1,3 +1,4 @@
+import { PLUGIN_LOADERS } from '@/plugins/loaders.generated'
 import type { ReactNode } from 'react'
 import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
@@ -16,6 +17,7 @@ export default async function ExtensionRouteGuard({ id, children }: { id: string
   const locale = await getLocale()
   const requestHost = (await headers()).get('host') ?? undefined
   const config = await getStorefrontConfigForServer(locale, requestHost)
-  if (!isExtensionEnabled(id, config?.extensions)) notFound()
+  const deployed = process.env.ENABLED_PLUGINS ?? process.env.NEXT_PUBLIC_ENABLED_PLUGINS
+  if ((deployed !== undefined && !deployed.split(',').map(value => value.trim()).includes(id)) || !Object.hasOwn(PLUGIN_LOADERS, id) || !isExtensionEnabled(id, config?.extensions)) notFound()
   return <>{children}</>
 }
