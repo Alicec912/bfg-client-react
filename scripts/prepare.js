@@ -14,6 +14,10 @@ const path = require('path')
 
 const SRC_DIR = path.join(__dirname, '..', 'src')
 const PLUGINS_DIR = path.join(SRC_DIR, 'plugins')
+const EXTENSIONS_DIRS = [
+  path.join(__dirname, '..', '..', 'extensions'),
+  path.join(__dirname, '..', '..', '..', 'extensions'),
+]
 const APP_DIR = path.join(SRC_DIR, 'app')
 const PUBLIC_DIR = path.join(__dirname, '..', 'public')
 const MANIFEST_FILE = path.join(SRC_DIR, '.plugin-routes-manifest.json')
@@ -27,6 +31,11 @@ const SKIN_AREA_DESTS = {
   account: ACCOUNT_THEMES_DIR,
   auth: AUTH_THEMES_DIR,
 }
+
+// Populated while skins are synchronised so the generated registry can retain the
+// extension that owns each skin after files are copied into the shared theme folders.
+let skinOrigins = new Map()
+let skinSourceDirs = new Map()
 
 // --- 1. Generate plugin loaders ---
 function generatePluginLoaders() {
@@ -346,6 +355,7 @@ function syncSkins() {
   const srcFiles = []
   const publicFiles = []
   const claims = new Map() // skinId -> origin label ("builtin" or plugin id)
+  const sourceDirs = new Map()
 
   // 1. Built-in skins shipped with bfg-client (src/skins/<id>/).
   if (fs.existsSync(BUILTIN_SKINS_DIR)) {
@@ -358,34 +368,55 @@ function syncSkins() {
     }
   }
 
+  function syncExtensionSkins(pluginName, skinsRoot, publicPrefix) {
+    let stat
+    try {
+      stat = fs.statSync(skinsRoot)
+    } catch {
+      return
+    }
+    if (!stat.isDirectory()) return
+    for (const skinId of fs.readdirSync(skinsRoot)) {
+      if (skinId.startsWith('.')) continue
+      const skinDir = path.join(skinsRoot, skinId)
+      if (!fs.statSync(skinDir).isDirectory()) continue
+      if (claims.has(skinId)) {
+        if (claims.get(skinId) === pluginName) continue
+        throw new Error(
+          `skin id "${skinId}" contributed by both "${claims.get(skinId)}" and "${pluginName}" — pick distinct ids`,
+        )
+      }
+      claims.set(skinId, pluginName)
+      sourceDirs.set(skinId, skinsRoot)
+      syncOneSkin(skinDir, skinId, publicPrefix, srcFiles, publicFiles)
+    }
+  }
+
   // 2. Extension skins (plugins/<plugin>/skins/<id>/).
   if (fs.existsSync(PLUGINS_DIR)) {
     for (const pluginName of fs.readdirSync(PLUGINS_DIR)) {
       if (pluginName.startsWith('.') || pluginName.endsWith('.generated.ts')) continue
-      const skinsRoot = path.join(PLUGINS_DIR, pluginName, 'skins')
-      let stat
-      try {
-        stat = fs.statSync(skinsRoot)
-      } catch {
-        continue
-      }
-      if (!stat.isDirectory()) continue
-      for (const skinId of fs.readdirSync(skinsRoot)) {
-        if (skinId.startsWith('.')) continue
-        const skinDir = path.join(skinsRoot, skinId)
-        if (!fs.statSync(skinDir).isDirectory()) continue
-        if (claims.has(skinId)) {
-          throw new Error(
-            `skin id "${skinId}" contributed by both "${claims.get(skinId)}" and "${pluginName}" — pick distinct ids`,
-          )
-        }
-        claims.set(skinId, pluginName)
-        syncOneSkin(skinDir, skinId, `plugins/${pluginName}`, srcFiles, publicFiles)
-      }
+      syncExtensionSkins(pluginName, path.join(PLUGINS_DIR, pluginName, 'skins'), `plugins/${pluginName}`)
+    }
+  }
+
+  // A standalone client checkout may not have extension symlinks yet. Discover
+  // skins from the canonical sibling extensions directory as well.
+  for (const extensionsDir of EXTENSIONS_DIRS) {
+    if (!fs.existsSync(extensionsDir)) continue
+    for (const directoryName of fs.readdirSync(extensionsDir)) {
+      const isClientPackage = directoryName.endsWith('-client')
+      const root = path.join(extensionsDir, directoryName)
+      const hasRootSkinPackage = fs.existsSync(path.join(root, 'skins')) && fs.existsSync(path.join(root, 'extension.json'))
+      if (!isClientPackage && !hasRootSkinPackage) continue
+      const pluginName = isClientPackage ? directoryName.slice(0, -'-client'.length) : directoryName
+      syncExtensionSkins(pluginName, path.join(extensionsDir, directoryName, 'skins'), `plugins/${pluginName}`)
     }
   }
 
   saveSkinManifest({ srcFiles, publicFiles, timestamp: new Date().toISOString() })
+  skinOrigins = claims
+  skinSourceDirs = sourceDirs
   if (claims.size > 0) {
     console.log(
       'Skins:',
@@ -399,20 +430,6 @@ function syncSkins() {
 
 // --- 3. Generate theme registry ---
 const THEME_REQUIRED = ['Layout.tsx', 'Header.tsx', 'Footer.tsx']
-
-function readThemeMetadata(themeDir) {
-  try {
-    const manifest = path.join(themeDir, 'theme.json')
-    if (!fs.existsSync(manifest)) return {}
-    const data = JSON.parse(fs.readFileSync(manifest, 'utf8'))
-    const modes = Array.isArray(data.supportedColorModes)
-      ? data.supportedColorModes.filter((mode) => mode === 'light' || mode === 'dark')
-      : []
-    return modes.length > 0 ? { supportedColorModes: [...new Set(modes)] } : {}
-  } catch (_) {
-    return {}
-  }
-}
 
 function getThemeIds() {
   if (!fs.existsSync(THEMES_DIR)) return []
@@ -436,27 +453,42 @@ function hasHomeComponent(themeId) {
   return false
 }
 
-function toThemeIdentifier(themeId) {
-  return themeId
-    .split(/[^a-zA-Z0-9]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join('')
+function humanizeExtensionId(id) {
+  if (id === 'builtin') return 'Built-in'
+  return id
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase())
 }
 
-function getThemeMetadata(themeId) {
-  const fallback = { displayName: themeId }
-  try {
-    const filename = path.join(THEMES_DIR, themeId, 'theme.json')
-    if (!fs.existsSync(filename)) return fallback
-    const data = JSON.parse(fs.readFileSync(filename, 'utf8'))
-    return {
-      displayName: typeof data.displayName === 'string' && data.displayName.trim() ? data.displayName.trim() : themeId,
-      ...(typeof data.description === 'string' && data.description.trim() ? { description: data.description.trim() } : {}),
-      ...(Array.isArray(data.supportedColorModes) ? { supportedColorModes: data.supportedColorModes } : {}),
+function readSkinMetadata(themeId, area = 'storefront') {
+  const origin = skinOrigins.get(themeId) || 'builtin'
+  const sourceDir = skinSourceDirs.get(themeId)
+    ? path.join(skinSourceDirs.get(themeId), themeId)
+    : origin === 'builtin'
+    ? path.join(BUILTIN_SKINS_DIR, themeId)
+    : path.join(PLUGINS_DIR, origin, 'skins', themeId)
+  const candidates = [
+    path.join(sourceDir, 'manifest.json'),
+    path.join(sourceDir, area, 'theme.json'),
+  ]
+  const metadata = {}
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) Object.assign(metadata, JSON.parse(fs.readFileSync(candidate, 'utf8')))
+    } catch (error) {
+      console.warn(`Could not read skin metadata for ${themeId}:`, error.message)
     }
-  } catch (_) {
-    return fallback
+  }
+  const text = (value) => typeof value === 'string' && value.trim() ? value.trim() : undefined
+  const modes = Array.isArray(metadata.supportedColorModes)
+    ? [...new Set(metadata.supportedColorModes.filter((mode) => mode === 'light' || mode === 'dark'))]
+    : []
+  return {
+    displayName: text(metadata.displayName) || text(metadata.label) || humanizeExtensionId(themeId),
+    description: text(metadata.description) || '',
+    extensionId: origin,
+    extensionName: humanizeExtensionId(origin),
+    ...(modes.length ? { supportedColorModes: modes } : {}),
   }
 }
 
@@ -464,7 +496,7 @@ function generateThemeRegistry() {
   const themeIds = getThemeIds()
   if (themeIds.length === 0) return
   const themeMetadata = Object.fromEntries(
-    themeIds.map((id) => [id, readThemeMetadata(path.join(THEMES_DIR, id))]),
+    themeIds.map((id) => [id, readSkinMetadata(id)]),
   )
 
   const outputFile = path.join(THEMES_DIR, 'registry.generated.ts')
@@ -476,14 +508,14 @@ function generateThemeRegistry() {
   ]
 
   for (const id of themeIds) {
-    const name = toThemeIdentifier(id)
+    const name = safeIdent(id)
     lines.push(`import ${name}Layout from './${id}/Layout'`)
     lines.push(`import ${name}Header from './${id}/Header'`)
     lines.push(`import ${name}Footer from './${id}/Footer'`)
   }
   const homeThemes = themeIds.filter(hasHomeComponent)
   for (const id of homeThemes) {
-    const name = toThemeIdentifier(id)
+    const name = safeIdent(id)
     lines.push(`import ${name}Home from './${id}/Home'`)
   }
 
@@ -519,18 +551,20 @@ function generateThemeRegistry() {
   lines.push('export type ThemeMetadata = {')
   lines.push('  displayName: string')
   lines.push('  description?: string')
+  lines.push('  extensionId: string')
+  lines.push('  extensionName: string')
   lines.push("  supportedColorModes?: Array<'light' | 'dark'>")
   lines.push('}')
   lines.push('')
   lines.push('export const THEME_METADATA: Record<string, ThemeMetadata> = {')
   for (const id of themeIds) {
-    lines.push(`  ${JSON.stringify(id)}: ${JSON.stringify(getThemeMetadata(id))},`)
+    lines.push(`  ${JSON.stringify(id)}: ${JSON.stringify(readSkinMetadata(id))},`)
   }
   lines.push('}')
   lines.push('')
   lines.push('export const THEME_REGISTRY: Record<string, ThemeShell> = {')
   for (const id of themeIds) {
-    const name = toThemeIdentifier(id)
+    const name = safeIdent(id)
     const modes = themeMetadata[id].supportedColorModes
     const metadata = modes ? `, supportedColorModes: ${JSON.stringify(modes)}` : ''
     lines.push(`  ${JSON.stringify(id)}: { Layout: ${name}Layout, Header: ${name}Header, Footer: ${name}Footer${metadata} },`)
@@ -543,7 +577,7 @@ function generateThemeRegistry() {
   lines.push('export const HOME_REGISTRY: Record<string, React.ComponentType<ThemeHomeProps> | null> = {')
   for (const id of themeIds) {
     const hasHome = homeThemes.includes(id)
-    const name = toThemeIdentifier(id)
+    const name = safeIdent(id)
     lines.push(`  ${JSON.stringify(id)}: ${hasHome ? name + 'Home' : 'null'},`)
   }
   lines.push('}')
@@ -647,7 +681,7 @@ function generateAreaSkinRegistry(area, themesDir) {
       const ident = `${safe}_${safeIdent(p.key || 'index')}`
       lines.push(`import ${ident} from './${id}/pages/${p.importPath}'`)
     }
-    skinEntries.push({ id, safe, hasLayout, pages, metadata: readThemeMetadata(skinDir) })
+    skinEntries.push({ id, safe, hasLayout, pages, metadata: readSkinMetadata(id, area) })
   }
 
   lines.push('')

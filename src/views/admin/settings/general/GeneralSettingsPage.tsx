@@ -13,6 +13,7 @@ import Card from '@mui/material/Card'
 import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import MenuItem from '@mui/material/MenuItem'
+import ListSubheader from '@mui/material/ListSubheader'
 import TabPanel from '@mui/lab/TabPanel'
 import CircularProgress from '@mui/material/CircularProgress'
 import Box from '@mui/material/Box'
@@ -63,6 +64,16 @@ import { usePageSlots } from '@/extensions/hooks/usePageSections'
 import { useTabQueryParam } from '@/hooks/useTabQueryParam'
 
 const THEME_IDS = Object.keys(THEME_REGISTRY).sort()
+const THEME_GROUPS = THEME_IDS.reduce<Record<string, { name: string; ids: string[] }>>((groups, themeId) => {
+  const extensionId = THEME_METADATA[themeId]?.extensionId || 'builtin'
+  const extensionName = THEME_METADATA[themeId]?.extensionName || 'Built-in'
+  groups[extensionId] = {
+    name: extensionName,
+    ids: [...(groups[extensionId]?.ids || []), themeId],
+  }
+  return groups
+}, {})
+
 function themeDisplayName(themeId: string): string {
   return THEME_METADATA[themeId]?.displayName || themeId.split(/[-_]+/).map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
 }
@@ -1339,11 +1350,43 @@ const GeneralSettingsPage = () => {
                           value={THEME_IDS.includes(storefrontUi.theme) ? storefrontUi.theme : THEME_IDS[0] ?? 'store'}
                           onChange={e => handleStorefrontUiChange('theme', e.target.value)}
                         >
-                          {THEME_IDS.map(id => (
-                            <MenuItem key={id} value={id}>
-                              {themeDisplayName(id)}
-                            </MenuItem>
-                          ))}
+                          {Object.entries(THEME_GROUPS).map(([extensionId, group]) => [
+                            <ListSubheader
+                              key={`extension-${extensionId}`}
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1,
+                                px: 2,
+                                py: 1,
+                                mt: 0.5,
+                                borderTop: '1px solid',
+                                borderColor: 'divider',
+                                bgcolor: 'action.hover',
+                                color: 'text.primary',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                letterSpacing: '0.04em',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              <Box component='span' sx={{ color: 'primary.main', fontSize: '0.95rem', lineHeight: 1 }}>
+                                ▾
+                              </Box>
+                              {group.name}
+                              <Box component='span' sx={{ ml: 'auto', color: 'text.disabled', fontSize: '0.7rem', fontWeight: 500, textTransform: 'none' }}>
+                                {group.ids.length} {group.ids.length === 1 ? 'skin' : 'skins'}
+                              </Box>
+                            </ListSubheader>,
+                            ...group.ids.map(id => (
+                              <MenuItem key={id} value={id} sx={{ pl: 4.5, position: 'relative' }}>
+                                <Box component='span' sx={{ position: 'absolute', left: 22, color: 'text.disabled' }}>
+                                  └
+                                </Box>
+                                {themeDisplayName(id)}
+                              </MenuItem>
+                            )),
+                          ])}
                         </CustomTextField>
                       </Grid>
                       <Grid size={{ xs: 12 }}>
