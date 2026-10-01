@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync, symlinkSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync, symlinkSync, existsSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -179,4 +179,35 @@ test('discovery uses Next production/development files and respects explicit ove
   prepare();assert.match(loaders(),/plugins\/one/);assert.doesNotMatch(loaders(),/plugins\/two/)
   prepare({},true);assert.match(loaders(),/plugins\/two/);assert.doesNotMatch(loaders(),/plugins\/one/)
   prepare({ENABLED_PLUGINS:''},true);assert.doesNotMatch(loaders(),/plugins\/(one|two)/)
+}))
+
+
+test('existing owned plugins containers are normalized and cannot claim another owner', () => fixture(({host, plugin, prepare}) => {
+  const source=plugin('one')
+  for (const area of ['admin','account']) {
+    mkdirSync(join(source,`app/${area}/plugins/one/details`),{recursive:true})
+    writeFileSync(join(source,`app/${area}/plugins/one/details/page.tsx`),'export default function Page() {return null}')
+  }
+  prepare();prepare()
+  assert.equal(existsSync(join(host,'src/app/account/plugins/one/details/page.tsx')),true)
+  assert.equal(existsSync(join(host,'src/app/account/plugins/one/plugins/one/details/page.tsx')),false)
+  const rewrites=JSON.parse(readFileSync(join(host,'src/.plugin-route-rewrites.json'),'utf8'))
+  assert.ok(rewrites.some(rule=>rule.source==='/admin/one'&&rule.destination==='/admin/plugins/one'))
+  mkdirSync(join(source,'app/account/plugins/two'),{recursive:true})
+  assert.throws(prepare,/may contain only its owner/)
+  assert.equal(existsSync(join(host,'src/app/account/plugins/one/details/page.tsx')),true)
+}))
+
+test('shared skin links resolve only to the installed owner canonical package', () => fixture(({root,host,plugin,skin,prepare}) => {
+  const source=plugin('one');skin('friendly','one')
+  const canonical=join(root,'extensions/one')
+  mkdirSync(canonical,{recursive:true});writeFileSync(join(canonical,'extension.json'),JSON.stringify({id:'one'}))
+  renameSync(join(source,'skins'),join(canonical,'skins'))
+  symlinkSync(join(canonical,'skins'),join(source,'skins'))
+  prepare();prepare()
+  assert.equal(existsSync(join(host,'src/components/storefront/themes/friendly/Layout.tsx')),true)
+  assert.match(readFileSync(join(host,'src/components/storefront/themes/registry.generated.ts'),'utf8'),/extensionId":"one"/)
+  rmSync(join(source,'skins'));mkdirSync(join(root,'external'),{recursive:true});symlinkSync(join(root,'external'),join(source,'skins'))
+  assert.throws(prepare,/outside its installed owner/)
+  assert.equal(existsSync(join(host,'src/components/storefront/themes/friendly/Layout.tsx')),true)
 }))
