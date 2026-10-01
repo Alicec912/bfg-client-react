@@ -104,7 +104,7 @@ const Logo = ({
 
   let iconContent
   if (!lightSrc && !darkSrc) {
-    iconContent = mark === 'none' ? null : <LogoIcon className='text-[2.6rem] sidebar-logo-icon' />
+    iconContent = mark === 'none' ? null : <LogoIcon surface={surface} aria-hidden className='text-[2.6rem] sidebar-logo-icon' />
   } else if (surface === 'dark') {
     iconContent = <img src={darkSrc} alt='' className='sidebar-logo-icon' style={imgStyle} />
   } else if (darkSrc === lightSrc) {
@@ -123,6 +123,7 @@ const Logo = ({
   const content = (
     <>
       {iconContent}
+      {!showName && <span className='sr-only'>{displayName}</span>}
       {showName && (
         <span style={textStyle} className='sidebar-logo-text'>
           {displayName}
@@ -132,11 +133,11 @@ const Logo = ({
   )
 
   return (
-    <div className='flex items-center sidebar-logo-wrapper' style={{ gap: '0.25rem' }}>
+    <div className='flex items-center sidebar-logo-wrapper' style={{ gap: '1.25rem' }}>
       {skipLink ? (
         content
       ) : (
-        <Link href={href} style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+        <Link href={href} style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', textDecoration: 'none' }}>
           {content}
         </Link>
       )}
@@ -145,4 +146,3 @@ const Logo = ({
 }
 
 export default Logo
-
