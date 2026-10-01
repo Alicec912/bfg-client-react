@@ -208,12 +208,19 @@ function syncPluginRoutes() {
         if (child.name.startsWith('.')) continue
         if (child.isSymbolicLink()) throw new Error('Plugin route source cannot contain symlinks')
         if (!child.isDirectory()) continue
-        const name = child.name
+        let name = child.name
+        let source = path.join(segmentRoot, name)
+        // Existing packages may already spell the owned physical namespace.
+        if (name === 'plugins') {
+          const nested = fs.readdirSync(source, {withFileTypes:true}).filter(entry => !entry.name.startsWith('.') && !IGNORE_FILES.includes(entry.name))
+          if (nested.length !== 1 || nested[0].name !== plugin || !nested[0].isDirectory() || nested[0].isSymbolicLink()) throw new Error(`Plugin namespace may contain only its owner: ${plugin}`)
+          name = plugin; source = path.join(source, plugin)
+        }
         if (!validId(name)) throw new Error('Invalid plugin route prefix')
         const group = segment === 'storefront' ? '(storefront)' : segment
         if (segment !== 'storefront' && (name === 'plugins' || fs.existsSync(path.join(APP_DIR, group, name)))) throw new Error(`Plugin route overlaps a host area: /${segment}/${name}`)
         const dest = path.join(APP_DIR, group, 'plugins', plugin, ...(name === plugin ? [] : [name]))
-        collectDirectory(path.join(segmentRoot, name), dest, SRC_DIR, files)
+        collectDirectory(source, dest, SRC_DIR, files)
         if (segment === 'storefront') {
           if (!URL_RESERVED.has(name)) {
             claimUrl('/' + name, plugin)
@@ -403,7 +410,32 @@ function syncSkins() {
   }
   function scan(root, owner) {
     if (!fs.existsSync(root)) return
-    if (fs.lstatSync(root).isSymbolicLink()) throw new Error('Skin root cannot be a symlink')
+    if (fs.lstatSync(root).isSymbolicLink()) {
+      // A packaged plugin can link its shared skins only to the installed owner's
+      // canonical package folder; arbitrary external skin roots stay forbidden.
+      const packageRoots = EXTENSIONS_DIRS.flatMap(directory => [path.join(directory, owner), path.join(directory, `${owner}-client`)])
+      // Linked packages need not live beside the host checkout. Their nearest
+      // declared package ancestor supplies the same owner boundary.
+      const moduleRoot = path.join(PLUGINS_DIR, owner)
+      if (fs.existsSync(moduleRoot)) {
+        let current = fs.realpathSync(moduleRoot)
+        while (current !== path.dirname(current)) {
+          const declaration = path.join(current, 'extension.json')
+          if (fs.existsSync(declaration)) { packageRoots.push(current); break }
+          current = path.dirname(current)
+        }
+      }
+      const allowed = packageRoots.some(packageRoot => {
+        const canonical = path.join(packageRoot, 'skins'), declaration = path.join(packageRoot, 'extension.json')
+        if (!fs.existsSync(canonical) || fs.lstatSync(canonical).isSymbolicLink() || !fs.statSync(canonical).isDirectory()) return false
+        if (fs.existsSync(declaration)) {
+          if (!fs.lstatSync(declaration).isFile() || fs.lstatSync(declaration).isSymbolicLink()) throw new Error('Extension declaration must be a regular file')
+          if (JSON.parse(fs.readFileSync(declaration, 'utf8')).id !== owner) return false
+        } else if (path.basename(packageRoot) !== `${owner}-client`) return false
+        return fs.realpathSync(canonical) === fs.realpathSync(root)
+      })
+      if (!allowed) throw new Error('Skin root cannot be a symlink outside its installed owner')
+    }
     if (!fs.statSync(root).isDirectory()) return
     for (const id of fs.readdirSync(root).sort()) {
       if (id.startsWith('.')) continue
