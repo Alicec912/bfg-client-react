@@ -8,7 +8,7 @@ import { refreshTokenIfNeeded } from './tokenRefresh'
 import { getApiBaseUrl, getWorkspaceId } from './api'
 import { getApiErrorMessage, WORKSPACE_READ_ONLY_CODE } from './apiErrors'
 import { getWorkspaceToken } from './authTokens'
-import { getOrCreateGuestCartKey } from './guestCart'
+import { getGuestCartToken, saveGuestCartToken, clearGuestCartToken } from './guestCart'
 import { getApiLanguageHeaders, getCurrentLocale } from '@/i18n/http'
 
 interface ApiResponse<T> {
@@ -77,6 +77,7 @@ export interface StorefrontPromoResponse {
 class StorefrontApiClient {
   private _baseUrl?: string
   private _customBaseUrl?: string
+  private cartBootstrap = new Map<string, Promise<unknown>>()
 
   constructor(baseUrl?: string) {
     this._customBaseUrl = baseUrl
@@ -90,7 +91,7 @@ class StorefrontApiClient {
     return this._baseUrl
   }
 
-  private async request<T>(endpoint: string, options: StorefrontRequestInit = {}, retryOn401: boolean = true): Promise<T> {
+  private async request<T>(endpoint: string, options: StorefrontRequestInit = {}, retryOn401: boolean = true, initializeCart: boolean = true, retryCartToken: boolean = true): Promise<T> {
     const { requestHost, ...fetchOptions } = options
     const base = this.baseUrl.replace(/\/$/, '')
     const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
@@ -117,6 +118,21 @@ class StorefrontApiClient {
       headers['X-Forwarded-Host'] = forwardedHost
     }
 
+    const cartScope = JSON.stringify([base, forwardedHost, getWorkspaceId()])
+    if (typeof window !== 'undefined' && initializeCart && path.startsWith('/api/v1/store/cart/') && !getGuestCartToken(cartScope)) {
+      let bootstrap = this.cartBootstrap.get(cartScope)
+      if (!bootstrap) {
+        bootstrap = this.request('/api/v1/store/cart/current/', { requestHost }, retryOn401, false)
+        this.cartBootstrap.set(cartScope, bootstrap)
+      }
+      try {
+        const cart = await bootstrap
+        if (path === '/api/v1/store/cart/current/' && (!fetchOptions.method || fetchOptions.method === 'GET')) return cart as T
+      } finally {
+        if (this.cartBootstrap.get(cartScope) === bootstrap) this.cartBootstrap.delete(cartScope)
+      }
+    }
+
     if (typeof window !== 'undefined') {
       const token = getWorkspaceToken()
       if (token) {
@@ -127,10 +143,8 @@ class StorefrontApiClient {
       // cookie and SameSite=Lax stops the browser sending it — every request would get
       // a fresh empty cart. Sent on all storefront calls rather than an endpoint
       // allowlist, so a new cart route can never be forgotten. See utils/guestCart.ts.
-      const guestCartKey = getOrCreateGuestCartKey()
-      if (guestCartKey) {
-        headers['X-Bfg-Cart-Session'] = guestCartKey
-      }
+      const guestCartToken = getGuestCartToken(cartScope)
+      if (guestCartToken) headers['X-Bfg-Cart-Session'] = guestCartToken
     }
 
     const response = await fetch(url, {
@@ -151,7 +165,7 @@ class StorefrontApiClient {
           newOptions.headers = restHeaders
         }
         // Retry the request with new token
-        return this.request<T>(endpoint, newOptions, false) // Don't retry again if it fails
+        return this.request<T>(endpoint, newOptions, false, initializeCart, retryCartToken) // Don't retry again if it fails
       }
       // If refresh failed, fall through to error handling
     }
@@ -172,6 +186,13 @@ class StorefrontApiClient {
           const jsonData = await responseClone.json()
           errorData = jsonData || {}
           
+          // Token validation happens before any cart mutation, so a rejected
+          // expired credential can safely be replaced and retried once.
+          if (response.status === 400 && errorData.cart_token && headers['X-Bfg-Cart-Session'] && retryCartToken) {
+            if (getGuestCartToken(cartScope) === headers['X-Bfg-Cart-Session']) clearGuestCartToken(cartScope)
+            return this.request<T>(endpoint, options, retryOn401, true, false)
+          }
+
           // Extract error message from various possible fields
           errorDetail =
             errorData.detail ||
@@ -276,7 +297,11 @@ class StorefrontApiClient {
 
     // Handle successful response - check if it's JSON before parsing
     if (isJson) {
-      return response.json()
+      const data = await response.json()
+      if (path.startsWith('/api/v1/store/cart/')) {
+        saveGuestCartToken(cartScope, data?.cart_token)
+      }
+      return data
     } else {
       // If response is not JSON, try to parse as text or return empty object
       const text = await response.text()
