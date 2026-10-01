@@ -140,7 +140,6 @@ class AuthApiClient {
       requestBody.username = usernameOrEmail
     }
 
-    console.log('Login request body:', requestBody)
     if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
       console.info('[auth] Login POST', `${base}${tokenPath}`)
     }
@@ -165,7 +164,6 @@ class AuthApiClient {
       try {
         if (isJson) {
           const errorData = await response.json()
-          console.error('Login API error response:', errorData)
 
           // Check if errorData is empty object
           const errorKeys = Object.keys(errorData || {})
@@ -214,7 +212,7 @@ class AuthApiClient {
       setWorkspaceToken(token)
       console.log('Login successful: Access token stored')
     } else {
-      console.warn('Login response did not contain a token:', data)
+      console.warn('Login response did not contain a token')
     }
 
     if (data.refresh && typeof window !== 'undefined') {
@@ -285,7 +283,6 @@ class AuthApiClient {
     try {
       if (isJson) {
         const errorData = await response.json()
-        console.error('Register API error response:', errorData)
 
         // Check for field-specific errors (DRF format)
         if (errorData.email) {
