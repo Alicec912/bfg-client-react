@@ -7,7 +7,7 @@ import type { StorefrontMenuItem } from '@/utils/storefrontConfig'
 
 type Props = { mode?: 'light' | 'dark' }
 
-const BRAND_FALLBACK = 'XMart'
+const BRAND_FALLBACK = 'BFG'
 
 /**
  * Header content from CMS (config.header_menus). Styles from website-theme-blocks.css.

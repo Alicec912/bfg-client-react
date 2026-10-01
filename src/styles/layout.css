@@ -588,3 +588,8 @@
   color: rgba(231, 227, 252, 0.54);
 }
 
+
+/* Keep the foundation planes visible on dark platform surfaces. */
+[data-mode='dark'] .bfg-logo-foundation {
+  fill: #CBD5E1;
+}
