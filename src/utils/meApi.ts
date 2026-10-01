@@ -190,11 +190,22 @@ class MeApiClient {
       // workspace mismatch, missing membership).
       const isExpectedAnonymousRejection =
         !hasToken && (response.status === 401 || response.status === 403)
-      const log = isExpectedAnonymousRejection ? console.warn : console.error
+      // A user without a saved default address is a valid empty dashboard state.
+      // The dashboard already converts this response into `address = null`, so
+      // do not report it as a console error alongside real API failures.
+      const isExpectedMissingDefaultAddress =
+        response.status === 404 &&
+        endpoint === '/api/v1/me/addresses/default/' &&
+        (!options.method || options.method === 'GET') &&
+        errorData?.detail === 'No default address found'
+      const log =
+        isExpectedAnonymousRejection ? console.warn : console.error
 
-      log(
-        `[meApi] ${options.method || 'GET'} ${url} → ${response.status} ${response.statusText || ''} | ${errorDetail} | hasToken=${!!hasToken} | body=${JSON.stringify(errorData)}`
-      )
+      if (!isExpectedMissingDefaultAddress) {
+        log(
+          `[meApi] ${options.method || 'GET'} ${url} → ${response.status} ${response.statusText || ''} | ${errorDetail} | hasToken=${!!hasToken} | body=${JSON.stringify(errorData)}`
+        )
+      }
       throw error
     }
 
