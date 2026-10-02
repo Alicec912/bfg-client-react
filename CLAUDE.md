@@ -37,7 +37,7 @@ Three route groups under `src/app/`:
 | `types/` | TypeScript types — notably `types/schema.ts` for schema-driven UI |
 | `utils/` | Utilities; `utils/api.ts` exports `apiFetch`, `bfgApi`, `buildApiUrl` |
 | `extensions/` | Extension/plugin system core |
-| `plugins/` | Active plugins (`channels/`, `outreach/`) + `loaders.generated.ts` |
+| `plugins/` | Installed host plugins + `loaders.generated.ts` |
 | `i18n/` | `next-intl` config and locale request handler |
 | `messages/` | Translation JSON files (English, Simplified Chinese) |
 
@@ -176,15 +176,15 @@ Themes live in `src/components/storefront/themes/<theme-id>/`. The legacy three-
 
 ## Extension Symlinks & Module Resolution
 
-Extensions (e.g. `extensions/channels/client/plugins/channels/`) are symlinked into `src/plugins/<name>/` from outside the client directory. Turbopack resolves symlinks to their real paths and then looks for `node_modules` relative to the real path — which is outside `src/client/`, causing failures.
+Extensions (e.g. `extensions/<short-name>/client/plugins/<id>/`) are symlinked into `src/plugins/<name>/` from outside the client directory. Turbopack resolves symlinks to their real paths and then looks for `node_modules` relative to the real path — which is outside `src/client/`, causing failures.
 
 **Fix**: Each extension directory must have a `node_modules` symlink pointing to the client's `node_modules`:
 
-```bash
-bash scripts/link-nexus-extensions.sh  # creates shared dependency links for each client
-```
+Use the integrating host's extension linker to create these links. BFG Server
+bundles Branding at `extensions/branding/client/plugins/brand_portal`; a
+frontend host can consume that source without copying it into this repository.
 
-These symlinks are gitignored via `extensions/*/node_modules` in the root `.gitignore`.
+Keep local dependency links and generated plugin output ignored by Git.
 
 ## Environment Variables
 
