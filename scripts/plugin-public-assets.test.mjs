@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync, symlinkSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync, symlinkSync, existsSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -69,11 +69,11 @@ test('source links, dangling destination links and traversal ownership records a
   writeFileSync(join(source, 'public/media/photo.txt'), 'source')
   symlinkSync(join(root, 'missing'), join(source, 'public/media/link.txt'))
   assert.throws(prepare, /cannot contain symlinks/)
-  rmSync(join(source, 'public/media/link.txt'))
+  unlinkSync(join(source, 'public/media/link.txt'))
   mkdirSync(join(host, 'public/plugins/one/media'), { recursive: true })
   symlinkSync(join(root, 'missing'), join(host, 'public/plugins/one/media/photo.txt'))
   assert.throws(prepare, /crosses a symlink/)
-  rmSync(join(host, 'public/plugins/one/media/photo.txt'))
+  unlinkSync(join(host, 'public/plugins/one/media/photo.txt'))
   writeFileSync(join(host, 'src/.plugin-public-assets.json'), JSON.stringify({ files: [{ path: '../outside', owner: 'one', sha256: 'a'.repeat(64) }] }))
   assert.throws(prepare, /ownership path/)
   assert.equal(existsSync(join(root, 'outside')), false)
