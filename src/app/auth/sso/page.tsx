@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ssoExchange } from '@/services/platform'
 import { setWorkspaceToken, setWorkspaceRefreshToken } from '@/utils/authTokens'
@@ -19,6 +19,7 @@ export default function AuthSSOPage() {
   const searchParams = useSearchParams()
   const [state, setState] = useState<SSOState>('loading')
   const [errorMessage, setErrorMessage] = useState('')
+  const exchangeRequest = useRef<{ code: string; promise: ReturnType<typeof ssoExchange> } | null>(null)
 
   useEffect(() => {
     const code = searchParams.get('code')
@@ -32,7 +33,12 @@ export default function AuthSSOPage() {
 
     async function exchange() {
       try {
-        const result = await ssoExchange(code!)
+        // React Strict Mode replays effects. Share this one-time exchange across
+        // effect instances so the active instance can finish without replaying it.
+        if (!exchangeRequest.current || exchangeRequest.current.code !== code) {
+          exchangeRequest.current = { code: code!, promise: ssoExchange(code!) }
+        }
+        const result = await exchangeRequest.current.promise
 
         if (cancelled) return
 
@@ -50,8 +56,11 @@ export default function AuthSSOPage() {
 
         setState('success')
 
-        const next = searchParams.get('next') || result.next || '/admin'
-        router.replace(next)
+        const next = result.next || '/admin'
+        const safeNext = next.startsWith('/') && !next.startsWith('//') && !/[\\\x00-\x1f\x7f]/.test(next)
+          ? next
+          : '/admin'
+        router.replace(safeNext)
       } catch (err: unknown) {
         if (cancelled) return
         setState('error')
