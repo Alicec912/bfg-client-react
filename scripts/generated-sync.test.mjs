@@ -211,3 +211,14 @@ test('shared skin links resolve only to the installed owner canonical package', 
   assert.throws(prepare,/outside its installed owner/)
   assert.equal(existsSync(join(host,'src/components/storefront/themes/friendly/Layout.tsx')),true)
 }))
+
+
+test('a later route collision preserves existing plugin loaders and registries', () => fixture(({host, plugin, skin, prepare}) => {
+  plugin('one', 'gallery'); skin('store'); prepare()
+  const controls = ['plugins/loaders.generated.ts', 'plugins/storefront-server.generated.ts',
+    'components/storefront/themes/registry.generated.ts']
+  const previous = controls.map(relative => readFileSync(join(host, 'src', relative)))
+  plugin('two', 'gallery')
+  assert.throws(prepare, /collision/)
+  controls.forEach((relative, index) => assert.deepEqual(readFileSync(join(host, 'src', relative)), previous[index]))
+}))

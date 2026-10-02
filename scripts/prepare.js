@@ -52,6 +52,7 @@ const isDeployed = id => enabledPlugins === null || enabledPlugins.has(id)
 const validId = id => typeof id === 'string' && /^[a-z][a-z0-9_-]*$/.test(id)
 const digest = data => crypto.createHash('sha256').update(data).digest('hex')
 const generatedPlans = []
+const generatedWrites = []
 function safeGeneratedPath(base, relative) {
   if (typeof relative !== 'string' || !relative || path.isAbsolute(relative) || relative.includes('\\') || relative.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Invalid generated path')
   const full = path.join(base, relative)
@@ -68,7 +69,17 @@ function checkedGeneratedFile(filename) {
   catch (error) { if (error.code !== 'ENOENT') throw error }
   return full
 }
-function writeGeneratedFile(filename, data, encoding) { fs.writeFileSync(checkedGeneratedFile(filename), data, encoding) }
+function writeGeneratedFile(filename, data, encoding) {
+  generatedWrites.push([checkedGeneratedFile(filename), Buffer.isBuffer(data) ? data : Buffer.from(data, encoding)])
+}
+function flushGeneratedWrites() {
+  for (const [full, next] of generatedWrites) {
+  if (fs.existsSync(full) && fs.readFileSync(full).equals(next)) continue
+  const staging = `${full}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`
+  fs.writeFileSync(staging, next, { flag: 'wx' })
+  fs.renameSync(staging, full)
+  }
+}
 function readGeneratedManifest(filename, key) {
   checkedGeneratedFile(filename)
   if (!fs.existsSync(filename)) return []
@@ -105,11 +116,14 @@ function commitGeneratedPlans() {
   for (const plan of generatedPlans) {
     for (const relative of plan.owned.keys()) {
       const full = safeGeneratedPath(plan.base, relative)
-      if (fs.existsSync(full)) { fs.unlinkSync(full); pruneEmptyDirs(path.dirname(full), plan.base) }
+      if (!plan.next.has(relative) && fs.existsSync(full)) { fs.unlinkSync(full); pruneEmptyDirs(path.dirname(full), plan.base) }
     }
     for (const [relative, data] of plan.next) {
       const full = safeGeneratedPath(plan.base, relative)
-      fs.mkdirSync(path.dirname(full), {recursive:true}); fs.writeFileSync(full, data)
+      if (fs.existsSync(full) && fs.readFileSync(full).equals(data)) continue
+      fs.mkdirSync(path.dirname(full), {recursive:true})
+      const staging = `${full}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`
+      fs.writeFileSync(staging, data, {flag:'wx'}); fs.renameSync(staging, full)
     }
     if (!manifests.has(plan.filename)) manifests.set(plan.filename, {})
     manifests.get(plan.filename)[plan.key] = [...plan.next].map(([relative, data]) => ({path:relative, sha256:digest(data)}))
@@ -451,7 +465,9 @@ function syncSkins() {
   for (const root of EXTENSIONS_DIRS) if (fs.existsSync(root)) for (const directory of fs.readdirSync(root).sort()) {
     const source = path.join(root, directory)
     if (!directory.endsWith('-client') && !(fs.existsSync(path.join(source, 'skins')) && fs.existsSync(path.join(source, 'extension.json')))) continue
-    const owner = directory.endsWith('-client') ? directory.slice(0, -7) : directory
+    const owner = fs.existsSync(path.join(source, 'extension.json'))
+      ? JSON.parse(fs.readFileSync(path.join(source, 'extension.json'), 'utf8')).id
+      : directory.slice(0, -7)
     if (isDeployed(owner)) scan(path.join(source, 'skins'), owner)
   }
   planGeneratedFiles(SRC_DIR, readGeneratedManifest(SKIN_MANIFEST_FILE, 'srcFiles'), srcFiles, relative => typeof relative === 'string' && /^components\/(storefront|account|auth)\/themes\/[a-z][a-z0-9_-]*\/.+/.test(relative), SKIN_MANIFEST_FILE, 'srcFiles')
@@ -783,4 +799,5 @@ commitGeneratedPlans()
 generateThemeRegistry()
 generateAreaSkinRegistry('account', ACCOUNT_THEMES_DIR)
 generateAreaSkinRegistry('auth', AUTH_THEMES_DIR)
+flushGeneratedWrites()
 console.log('\nDone.')

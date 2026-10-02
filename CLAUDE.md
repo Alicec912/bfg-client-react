@@ -176,12 +176,12 @@ Themes live in `src/components/storefront/themes/<theme-id>/`. The legacy three-
 
 ## Extension Symlinks & Module Resolution
 
-Extensions (e.g. `extensions/channels-client/`) are symlinked into `src/plugins/<name>/` from outside the client directory. Turbopack resolves symlinks to their real paths and then looks for `node_modules` relative to the real path — which is outside `src/client/`, causing failures.
+Extensions (e.g. `extensions/channels/client/plugins/channels/`) are symlinked into `src/plugins/<name>/` from outside the client directory. Turbopack resolves symlinks to their real paths and then looks for `node_modules` relative to the real path — which is outside `src/client/`, causing failures.
 
 **Fix**: Each extension directory must have a `node_modules` symlink pointing to the client's `node_modules`:
 
 ```bash
-ln -s ../../src/client/node_modules extensions/<name>-client/node_modules
+bash scripts/link-nexus-extensions.sh  # creates shared dependency links for each client
 ```
 
 These symlinks are gitignored via `extensions/*/node_modules` in the root `.gitignore`.
