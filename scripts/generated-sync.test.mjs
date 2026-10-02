@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync, symlinkSync, existsSync, renameSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync, symlinkSync, existsSync, renameSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -207,7 +207,7 @@ test('shared skin links resolve only to the installed owner canonical package', 
   prepare();prepare()
   assert.equal(existsSync(join(host,'src/components/storefront/themes/friendly/Layout.tsx')),true)
   assert.match(readFileSync(join(host,'src/components/storefront/themes/registry.generated.ts'),'utf8'),/extensionId":"one"/)
-  rmSync(join(source,'skins'));mkdirSync(join(root,'external'),{recursive:true});symlinkSync(join(root,'external'),join(source,'skins'))
+  unlinkSync(join(source,'skins'));mkdirSync(join(root,'external'),{recursive:true});symlinkSync(join(root,'external'),join(source,'skins'))
   assert.throws(prepare,/outside its installed owner/)
   assert.equal(existsSync(join(host,'src/components/storefront/themes/friendly/Layout.tsx')),true)
 }))
