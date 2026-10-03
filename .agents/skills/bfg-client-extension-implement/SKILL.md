@@ -32,6 +32,21 @@ invent API fields or silently fall back to mock data.
 Record every host-owned change and why it is reusable beyond the requesting
 extension.
 
+## Unified extension source layout
+
+The extension source root owns both runtime packages and shared assets:
+`server/`, `client/plugins/<id>/`, optional `client/miniapp/`, `skins/`,
+`docs/`, tests, and E2E suites. Inspect the actual Git owner; a client package
+is not necessarily a separate repository. Keep dispatch results in that
+owner, and preserve existing test discovery locations.
+
+When integrating into Nexus, read `extensions/registry.json` and use its
+short directory name, stable plugin id, and source path. Do not create a
+new `<name>-client` repository or rename stable plugin/API ids to match the
+folder. Run the host linker and prepare command instead of committing
+generated business files to BFG Client. Shared skins remain at the extension
+root; their plugin link must resolve only to their declared owner.
+
 ## Client invariants
 
 - Use the existing extension registry, generated loaders/routes, and

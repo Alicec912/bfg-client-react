@@ -1,15 +1,12 @@
 'use client'
 
 /**
- * /workspaces: every workspace the signed-in user owns or is staff in, one card each, with
- * a way into each one's admin, a way to manage the ones they own, and a way to create another.
- *
- * It is the console's home page. The tree on the left manages one workspace at a time; this
- * is where they are all listed, staff-only ones included, and those have nothing to manage
- * here beyond opening their admin.
+ * /workspaces is the console's home page. Platform superusers enter the full platform list;
+ * other accounts see the workspaces they own or work in, with their available actions.
+ * The server independently authorizes every list and workspace operation.
  */
 
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -65,6 +62,12 @@ export default function WorkspacesPage() {
   /** The name of a workspace that was created but could not be switched to. */
   const [createdNotSwitched, setCreatedNotSwitched] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (state.kind === 'loaded' && state.isPlatformAdmin) {
+      router.replace('/workspaces/platform')
+    }
+  }, [router, state])
+
   const handleEnter = async (workspace: TenantWorkspace) => {
     if (enteringId !== null) return
 
@@ -115,6 +118,14 @@ export default function WorkspacesPage() {
   })()
 
   const listIsEmpty = state.kind === 'loaded' && state.workspaces.length === 0
+
+  if (state.kind === 'loaded' && state.isPlatformAdmin) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 16 }}>
+        <CircularProgress size={28} aria-label={t('loading')} />
+      </Box>
+    )
+  }
 
   const createButton = (
     <Button
