@@ -18,12 +18,8 @@ import Typography from '@mui/material/Typography'
 // Component Imports
 import CustomTextField from '@/components/ui/TextField'
 
-import { Bold } from '@tiptap/extension-bold'
-import { Italic } from '@tiptap/extension-italic'
 import { Placeholder } from '@tiptap/extension-placeholder'
-import { Strike } from '@tiptap/extension-strike'
 import { TextAlign } from '@tiptap/extension-text-align'
-import { Underline } from '@tiptap/extension-underline'
 import Image from '@tiptap/extension-image'
 import type { Editor } from '@tiptap/react'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
@@ -169,10 +165,6 @@ export default function PostContentEditor({
       TextAlign.configure({
         types: ['heading', 'paragraph']
       }),
-      Bold,
-      Italic,
-      Strike,
-      Underline,
       Image.configure({
         HTMLAttributes: {
           style: 'max-width: 100%; height: auto;'
