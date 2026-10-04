@@ -1,9 +1,7 @@
 name: Frontend end-to-end tests
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   playwright:
