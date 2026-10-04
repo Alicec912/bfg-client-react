@@ -1,9 +1,10 @@
 import 'server-only'
+import { isSkinEnabled } from '@/extensions/skinAvailability'
 
 import { headers } from 'next/headers'
 import { getLocale } from 'next-intl/server'
 import { getStorefrontConfigForServer } from '@/utils/storefrontConfig'
-import { STOREFRONT_PAGE_OVERRIDES, type StorefrontSkinPage } from './registry.generated'
+import { THEME_METADATA, STOREFRONT_PAGE_OVERRIDES, type StorefrontSkinPage } from './registry.generated'
 
 /**
  * Resolve a storefront page-level override component for `routeKey`.
@@ -26,6 +27,6 @@ export async function resolveStorefrontPage(routeKey: string): Promise<Storefron
   const requestHost = headersList.get('host') ?? undefined
   const config = await getStorefrontConfigForServer(locale, requestHost)
   const id = config?.theme
-  if (!id) return null
+  if (!id || !isSkinEnabled(THEME_METADATA[id], config)) return null
   return STOREFRONT_PAGE_OVERRIDES[id]?.[routeKey] ?? null
 }

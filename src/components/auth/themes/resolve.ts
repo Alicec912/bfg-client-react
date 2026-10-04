@@ -1,9 +1,10 @@
 import 'server-only'
+import { isSkinEnabled } from '@/extensions/skinAvailability'
 
 import { headers } from 'next/headers'
 import { getLocale } from 'next-intl/server'
 import { getStorefrontConfigForServer } from '@/utils/storefrontConfig'
-import { AUTH_SKIN_REGISTRY, type AreaSkin } from './registry.generated'
+import { AUTH_SKIN_METADATA, AUTH_SKIN_REGISTRY, type AreaSkin } from './registry.generated'
 
 export type AuthSkin = AreaSkin
 
@@ -17,7 +18,7 @@ export async function resolveAuthSkin(): Promise<AuthSkin | null> {
   const requestHost = headersList.get('host') ?? undefined
   const config = await getStorefrontConfigForServer(locale, requestHost)
   const id = config?.theme
-  if (!id) return null
+  if (!id || !isSkinEnabled(AUTH_SKIN_METADATA[id], config)) return null
   return AUTH_SKIN_REGISTRY[id] ?? null
 }
 

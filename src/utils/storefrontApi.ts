@@ -6,7 +6,9 @@
 
 import { refreshTokenIfNeeded } from './tokenRefresh'
 import { getApiBaseUrl, getWorkspaceId } from './api'
+import { getApiErrorMessage, WORKSPACE_READ_ONLY_CODE } from './apiErrors'
 import { getWorkspaceToken } from './authTokens'
+import { getGuestCartToken, saveGuestCartToken, clearGuestCartToken } from './guestCart'
 import { getApiLanguageHeaders, getCurrentLocale } from '@/i18n/http'
 
 interface ApiResponse<T> {
@@ -22,6 +24,20 @@ interface ApiResponse<T> {
  * Extends RequestInit for storefront fetches.
  * `requestHost` is set on the Next.js server so WorkspaceMiddleware can resolve the tenant from the incoming Host (no `window`).
  */
+/** A collection point as the checkout picker sees it. */
+export type StorefrontPickupPoint = {
+  id: number
+  name: string
+  code: string
+  address: string
+  phone: string
+  /** Opening hours, which door, where to park. Free text, may be empty. */
+  instructions: string
+  latitude: string | null
+  longitude: string | null
+  fee: string
+}
+
 export type StorefrontRequestInit = RequestInit & {
   requestHost?: string
 }
@@ -61,6 +77,7 @@ export interface StorefrontPromoResponse {
 class StorefrontApiClient {
   private _baseUrl?: string
   private _customBaseUrl?: string
+  private cartBootstrap = new Map<string, Promise<unknown>>()
 
   constructor(baseUrl?: string) {
     this._customBaseUrl = baseUrl
@@ -74,7 +91,7 @@ class StorefrontApiClient {
     return this._baseUrl
   }
 
-  private async request<T>(endpoint: string, options: StorefrontRequestInit = {}, retryOn401: boolean = true): Promise<T> {
+  private async request<T>(endpoint: string, options: StorefrontRequestInit = {}, retryOn401: boolean = true, initializeCart: boolean = true, retryCartToken: boolean = true): Promise<T> {
     const { requestHost, ...fetchOptions } = options
     const base = this.baseUrl.replace(/\/$/, '')
     const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
@@ -101,11 +118,33 @@ class StorefrontApiClient {
       headers['X-Forwarded-Host'] = forwardedHost
     }
 
+    const cartScope = JSON.stringify([base, forwardedHost, getWorkspaceId()])
+    if (typeof window !== 'undefined' && initializeCart && path.startsWith('/api/v1/store/cart/') && !getGuestCartToken(cartScope)) {
+      let bootstrap = this.cartBootstrap.get(cartScope)
+      if (!bootstrap) {
+        bootstrap = this.request('/api/v1/store/cart/current/', { requestHost }, retryOn401, false)
+        this.cartBootstrap.set(cartScope, bootstrap)
+      }
+      try {
+        const cart = await bootstrap
+        if (path === '/api/v1/store/cart/current/' && (!fetchOptions.method || fetchOptions.method === 'GET')) return cart as T
+      } finally {
+        if (this.cartBootstrap.get(cartScope) === bootstrap) this.cartBootstrap.delete(cartScope)
+      }
+    }
+
     if (typeof window !== 'undefined') {
       const token = getWorkspaceToken()
       if (token) {
         headers['Authorization'] = `Bearer ${token}`
       }
+      // Cart identity. `credentials: 'include'` below is not enough: the storefront and
+      // the API are on different registrable domains, so `sessionid` is a cross-site
+      // cookie and SameSite=Lax stops the browser sending it — every request would get
+      // a fresh empty cart. Sent on all storefront calls rather than an endpoint
+      // allowlist, so a new cart route can never be forgotten. See utils/guestCart.ts.
+      const guestCartToken = getGuestCartToken(cartScope)
+      if (guestCartToken) headers['X-Bfg-Cart-Session'] = guestCartToken
     }
 
     const response = await fetch(url, {
@@ -126,7 +165,7 @@ class StorefrontApiClient {
           newOptions.headers = restHeaders
         }
         // Retry the request with new token
-        return this.request<T>(endpoint, newOptions, false) // Don't retry again if it fails
+        return this.request<T>(endpoint, newOptions, false, initializeCart, retryCartToken) // Don't retry again if it fails
       }
       // If refresh failed, fall through to error handling
     }
@@ -147,6 +186,13 @@ class StorefrontApiClient {
           const jsonData = await responseClone.json()
           errorData = jsonData || {}
           
+          // Token validation happens before any cart mutation, so a rejected
+          // expired credential can safely be replaced and retried once.
+          if (response.status === 400 && errorData.cart_token && headers['X-Bfg-Cart-Session'] && retryCartToken) {
+            if (getGuestCartToken(cartScope) === headers['X-Bfg-Cart-Session']) clearGuestCartToken(cartScope)
+            return this.request<T>(endpoint, options, retryOn401, true, false)
+          }
+
           // Extract error message from various possible fields
           errorDetail =
             errorData.detail ||
@@ -157,6 +203,10 @@ class StorefrontApiClient {
             (typeof errorData === 'object' && Object.keys(errorData).length === 0 
               ? `HTTP error! status: ${response.status} ${response.statusText || ''}`.trim()
               : `HTTP error! status: ${response.status}`)
+
+          // A refusal with a code we explain ourselves reads better in the shopper's
+          // language than in the server's. Everything else keeps the server's wording.
+          errorDetail = getApiErrorMessage(errorData?.code) ?? errorDetail
         } else {
           // Try to get text response (might be HTML error page)
           const text = await responseClone.text()
@@ -195,8 +245,12 @@ class StorefrontApiClient {
         }
       }
 
-      // Redirect to login on 403 for account pages only (avoid redirect loops)
-      if (response.status === 403 && typeof window !== 'undefined') {
+      // Redirect to login on 403 for account pages only (avoid redirect loops).
+      // A shop that is temporarily read only refuses writes from everyone, signed in
+      // or not, so sending the shopper to log in would only lose their page and teach
+      // them nothing — that one keeps its explanation and stays put.
+      const readOnlyRefusal = errorData?.code === WORKSPACE_READ_ONLY_CODE
+      if (response.status === 403 && !readOnlyRefusal && typeof window !== 'undefined') {
         const { pathname, href } = window.location
         const isLogin = pathname.startsWith('/auth/login')
         const isAccountPage = pathname.startsWith('/account')
@@ -243,7 +297,11 @@ class StorefrontApiClient {
 
     // Handle successful response - check if it's JSON before parsing
     if (isJson) {
-      return response.json()
+      const data = await response.json()
+      if (path.startsWith('/api/v1/store/cart/')) {
+        saveGuestCartToken(cartScope, data?.cart_token)
+      }
+      return data
     } else {
       // If response is not JSON, try to parse as text or return empty object
       const text = await response.text()
@@ -281,6 +339,10 @@ class StorefrontApiClient {
     sort?: 'price_asc' | 'price_desc' | 'name' | 'sales'
     limit?: number
     page?: number
+    /** Next.js server: incoming Host for tenant resolution (pass `headers().get('host')`). */
+    requestHost?: string
+    /** Next.js fetch cache (server components / sitemap). */
+    next?: { revalidate?: number }
   }): Promise<ApiResponse<any>> {
     const queryParams = new URLSearchParams()
 
@@ -293,11 +355,23 @@ class StorefrontApiClient {
     if (params?.min_price) queryParams.append('min_price', params.min_price.toString())
     if (params?.max_price) queryParams.append('max_price', params.max_price.toString())
     if (params?.sort) queryParams.append('sort', params.sort)
-    if (params?.limit) queryParams.append('limit', params.limit.toString())
+    if (params?.limit) {
+      // Page size only. The API paginates with `page_size` (config.pagination.
+      // StandardPagination, max 200) and treats `limit` as a hard slice of the whole
+      // queryset — so sending both, at the same value, truncated every result set to a
+      // single page: `count` came back equal to the page size and `next` was always null.
+      // That capped category pages at 12 products forever and made totalPages always 1,
+      // so the pagination control could never render and the rest of a category was
+      // unreachable (arduino reported 12 products; it has 22).
+      queryParams.append('page_size', Math.min(params.limit, 200).toString())
+    }
     if (params?.page) queryParams.append('page', params.page.toString())
 
     const query = queryParams.toString()
-    return this.request<ApiResponse<any>>(`/api/v1/store/products/${query ? `?${query}` : ''}`)
+    return this.request<ApiResponse<any>>(`/api/v1/store/products/${query ? `?${query}` : ''}`, {
+      next: params?.next,
+      requestHost: params?.requestHost,
+    })
   }
 
   async getProduct(
@@ -346,6 +420,26 @@ class StorefrontApiClient {
     )
   }
 
+  /**
+   * Ask to be emailed when a sold-out product returns.
+   *
+   * Only accepted while the workspace's out-of-stock policy is `notify`; under any other
+   * setting the server 404s rather than bank an address it will never write to.
+   */
+  async notifyWhenInStock(
+    productIdOrSlug: string | number,
+    email: string,
+    variantId?: number
+  ): Promise<{ registered: boolean }> {
+    return this.request<{ registered: boolean }>(
+      `/api/v1/store/products/${productIdOrSlug}/notify-me/`,
+      {
+        method: 'POST',
+        body: JSON.stringify(variantId ? { email, variant_id: variantId } : { email })
+      }
+    )
+  }
+
   async markReviewHelpful(productIdOrSlug: string | number, reviewId: number): Promise<any> {
     return this.request<any>(`/api/v1/store/products/${productIdOrSlug}/reviews/${reviewId}/helpful/`, {
       method: 'POST'
@@ -389,7 +483,11 @@ class StorefrontApiClient {
     return this.request<any>('/api/v1/store/cart/current/')
   }
 
-  async getCartPreview(shippingMethod?: string, freightServiceId?: number): Promise<{
+  async getCartPreview(
+    shippingMethod?: string,
+    freightServiceId?: number,
+    fulfillment?: { method: 'shipping' | 'pickup'; pickupPointId?: number | null }
+  ): Promise<{
     subtotal: string
     discount: string
     shipping_cost: string
@@ -398,7 +496,14 @@ class StorefrontApiClient {
     shipping_discount?: string | null
   }> {
     const queryParams = new URLSearchParams()
-    if (freightServiceId) {
+    if (fulfillment?.method === 'pickup') {
+      // Nothing is being carried, so a freight service would only mislead the
+      // summary; the point's own fee is the whole charge.
+      queryParams.append('fulfillment_method', 'pickup')
+      if (fulfillment.pickupPointId) {
+        queryParams.append('pickup_point', String(fulfillment.pickupPointId))
+      }
+    } else if (freightServiceId) {
       queryParams.append('freight_service_id', freightServiceId.toString())
     } else if (shippingMethod) {
       queryParams.append('shipping_method', shippingMethod)
@@ -412,6 +517,11 @@ class StorefrontApiClient {
       total: string
       shipping_discount?: string | null
     }>(`/api/v1/store/cart/preview/${query ? `?${query}` : ''}`)
+  }
+
+  /** Active collection points for this workspace. Public, like freight services. */
+  async getPickupPoints(): Promise<StorefrontPickupPoint[]> {
+    return this.request<StorefrontPickupPoint[]>('/api/v1/delivery/pickup-points/for_storefront/')
   }
 
   // Freight Services
@@ -461,8 +571,11 @@ class StorefrontApiClient {
 
   async checkout(data: {
     store: number
-    shipping_address: number
-    billing_address: number
+    /** Omitted for a collection order — there is nothing to deliver to. */
+    shipping_address?: number
+    billing_address?: number
+    fulfillment_method?: 'shipping' | 'pickup'
+    pickup_point?: number | null
     customer_note?: string
     freight_service_id?: number  // Preferred
     shipping_method?: string  // Backward compatibility
@@ -478,7 +591,9 @@ class StorefrontApiClient {
   // Guest checkout (no authentication required)
   async guestCheckout(data: {
     store: number
-    shipping_address: {
+    fulfillment_method?: 'shipping' | 'pickup'
+    pickup_point?: number | null
+    shipping_address?: {
       full_name: string
       phone?: string
       email?: string

@@ -4,6 +4,9 @@ node_modules/
 .env
 .env.local
 .env.*.local
+# A hand-made copy escapes every pattern above, and a real .env.local.bak has
+# sat untracked in this checkout for weeks.
+.env*.bak
 !.env.example
 .cursor/commands/
 .shared/
@@ -35,3 +38,12 @@ public/plugins/
 
 .env*.local
 .claude/settings.local.json
+
+# Public files copied from installed plugins are generated artifacts.
+src/.plugin-public-assets.json
+src/.plugin-public-mounts.json
+
+/src/.plugin-route-rewrites.json
+/src/.plugin-route-control.json
+/src/.plugin-public-control.json
+/node_modules

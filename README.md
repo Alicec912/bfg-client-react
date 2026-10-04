@@ -1,6 +1,6 @@
 # BFG Framework — Client (Next.js)
 
-Admin UI and storefront for the BFG open-source e-commerce and SaaS framework. Built with Next.js 14 (App Router), MUI v5, and next-intl.
+Admin UI and storefront for the BFG open-source e-commerce and SaaS framework. Built with Next.js 16 (App Router), MUI v7, and next-intl.
 
 Requires the BFG Django backend running. See [../server/README.md](../server/README.md).
 
@@ -13,6 +13,7 @@ Requires the BFG Django backend running. See [../server/README.md](../server/REA
 - **i18n** — next-intl; English + Simplified Chinese out of the box
 - **Plugin system** — per-workspace UI extensions auto-loaded from `src/plugins/`
 - **Extension registry** — composable terminology, config, and hook overrides via `src/extensions/`
+- **Builtin storefront skins** — `store`, `website` and `project-grid` are reusable skins discovered from `src/skins/`; customer branding belongs to external plugins
 
 ---
 
@@ -20,7 +21,7 @@ Requires the BFG Django backend running. See [../server/README.md](../server/REA
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22+
 - npm 9+ (or pnpm/yarn)
 - BFG Django backend running at `http://localhost:8000`
 
@@ -45,9 +46,14 @@ Open http://localhost:3000.
 | `npm run dev` | Auto-generate plugin/extension loaders, then start Next.js dev server |
 | `npm run build` | Auto-generate loaders, then build for production |
 | `npm run start` | Start production server (run after `build`) |
-| `npm run lint` | ESLint |
+| `npm run lint` | TypeScript validation |
 
 > `npm run dev` and `npm run build` both run `scripts/prepare.js` first to auto-discover plugins and regenerate `src/plugins/loaders.generated.ts`. You don't need to run this manually.
+
+The same prepare step discovers builtin storefront skins and regenerates
+`src/components/storefront/themes/registry.generated.ts`. A skin directory must
+provide `Layout.tsx`, `Header.tsx`, and `Footer.tsx`; add `Home.tsx` and
+`theme.json` when it supplies a home layout and display metadata.
 
 ---
 
@@ -61,8 +67,7 @@ Copy `.env.example` to `.env.local` and fill in:
 | `NEXT_PUBLIC_WORKSPACE_API_URL` | — | Workspace server URL (standalone Platform mode only). Falls back to `NEXT_PUBLIC_API_URL` |
 | `NEXT_PUBLIC_WORKSPACE_ID` | — | Pin to a specific workspace ID. Leave unset for dynamic token-exchange-based routing |
 | `NEXT_PUBLIC_PLATFORM_LOGIN_URL` | — | If set, `/auth/login` redirects here (for workspaces managed by a Platform instance) |
-| `NEXT_PUBLIC_ENABLED_PLUGINS` | — | Comma-separated plugin IDs to activate. Default: all plugins under `src/plugins/` |
-| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | — | Google Maps API key for address autocomplete |
+| `NEXT_PUBLIC_ENABLED_PLUGINS` | — | Comma-separated plugin IDs to activate. Unset: all installed plugins; empty: none. Set consistently at build and runtime. |
 | `NEXT_PUBLIC_MEDIA_URL` | — | Media CDN base. Default: `NEXT_PUBLIC_API_URL/media` |
 | `ALLOWED_DEV_ORIGINS` | — | Extra allowed origins for `next dev` (comma-separated) |
 | `NEXT_FILE_TRACING_ROOT` | — | File tracing root for Docker deployments |

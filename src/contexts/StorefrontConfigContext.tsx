@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import {
+  DEFAULT_STOREFRONT_DISPLAY,
   getAllowedColorModes,
   getStorefrontConfig,
   hasMultipleStorefrontLanguages,
@@ -46,6 +47,9 @@ const defaultConfig: StorefrontConfig = {
     show_style_selector: true,
     show_login: true,
   },
+  storefront_display: DEFAULT_STOREFRONT_DISPLAY,
+  // A shop whose config never arrived is still open for business.
+  read_only: false,
 }
 
 const StorefrontConfigContext = createContext<StorefrontConfigContextType | undefined>(undefined)
@@ -121,9 +125,9 @@ function ColorModeEnforcer({ config }: { config: StorefrontConfig | null }) {
     if (!config) return
     const allowed = getAllowedColorModes(config)
     if (allowed.length === 1) {
-      forceMode(allowed[0])
+      forceMode(allowed[0], 'storefront')
     } else {
-      forceMode(null)
+      forceMode(null, 'storefront')
     }
   }, [config, forceMode])
   return null

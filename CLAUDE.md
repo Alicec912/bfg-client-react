@@ -37,7 +37,7 @@ Three route groups under `src/app/`:
 | `types/` | TypeScript types — notably `types/schema.ts` for schema-driven UI |
 | `utils/` | Utilities; `utils/api.ts` exports `apiFetch`, `bfgApi`, `buildApiUrl` |
 | `extensions/` | Extension/plugin system core |
-| `plugins/` | Active plugins (`channels/`, `outreach/`) + `loaders.generated.ts` |
+| `plugins/` | Installed host plugins + `loaders.generated.ts` |
 | `i18n/` | `next-intl` config and locale request handler |
 | `messages/` | Translation JSON files (English, Simplified Chinese) |
 
@@ -112,7 +112,7 @@ Where `<area>` is `account`, `auth`, or `storefront`.
 | storefront | `cms` | `/[slug]` |
 | account | `dashboard` | `/account/` |
 | account | `orders`, `orders/[id]` | `/account/orders[/:id]` |
-| account | `addresses`, `payments`, `settings`, `support`, `alerts`, `comments`, `credit-slips`, `change-password`, `gdpr`, `information` | `/account/<key>` |
+| account | `returns`, `addresses`, `payments`, `settings`, `support`, `alerts`, `comments`, `credit-slips`, `change-password`, `gdpr`, `information` | `/account/<key>` |
 | account | `wallet/withdraw` | `/account/wallet/withdraw` |
 | auth | `login`, `register`, `forgot-password`, `reset-password`, `verify-email` | `/auth/<key>` |
 
@@ -176,15 +176,15 @@ Themes live in `src/components/storefront/themes/<theme-id>/`. The legacy three-
 
 ## Extension Symlinks & Module Resolution
 
-Extensions (e.g. `extensions/channels-client/`) are symlinked into `src/plugins/<name>/` from outside the client directory. Turbopack resolves symlinks to their real paths and then looks for `node_modules` relative to the real path — which is outside `src/client/`, causing failures.
+Extensions (e.g. `extensions/<short-name>/client/plugins/<id>/`) are symlinked into `src/plugins/<name>/` from outside the client directory. Turbopack resolves symlinks to their real paths and then looks for `node_modules` relative to the real path — which is outside `src/client/`, causing failures.
 
 **Fix**: Each extension directory must have a `node_modules` symlink pointing to the client's `node_modules`:
 
-```bash
-ln -s ../../src/client/node_modules extensions/<name>-client/node_modules
-```
+Use the integrating host's extension linker to create these links. BFG Server
+bundles Branding at `extensions/branding/client/plugins/brand_portal`; a
+frontend host can consume that source without copying it into this repository.
 
-These symlinks are gitignored via `extensions/*/node_modules` in the root `.gitignore`.
+Keep local dependency links and generated plugin output ignored by Git.
 
 ## Environment Variables
 
@@ -194,7 +194,6 @@ These symlinks are gitignored via `extensions/*/node_modules` in the root `.giti
 | `NEXT_PUBLIC_WORKSPACE_ID` | No | Bind to a specific workspace; omit for platform instances |
 | `NEXT_PUBLIC_PLATFORM_LOGIN_URL` | No | When set, `/auth/login` redirects here |
 | `ENABLED_PLUGINS` / `NEXT_PUBLIC_ENABLED_PLUGINS` | No | Comma-separated plugin IDs (default: all) |
-| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | No | Address autocomplete |
 | `NEXT_PUBLIC_MEDIA_URL` | No | Defaults to `NEXT_PUBLIC_API_URL/media` |
 | `API_URL` | No | Server-side only (Docker internal); falls back to `NEXT_PUBLIC_API_URL` |
 | `NEXT_FILE_TRACING_ROOT` | No | Set to `/app` in Docker; auto-detected otherwise |
@@ -245,3 +244,13 @@ with no active `StaffMember` in the current workspace is redirected to
 roles (`manage.py init_system_roles`) and create an active `StaffMember` with the
 `admin` role for that user. Diagnose by inspecting `staff_member` in
 `GET /api/v1/me/` for the logged-in admin.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

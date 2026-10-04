@@ -1,9 +1,10 @@
 import 'server-only'
+import { isSkinEnabled } from '@/extensions/skinAvailability'
 
 import { headers } from 'next/headers'
 import { getLocale } from 'next-intl/server'
 import { getStorefrontConfigForServer } from '@/utils/storefrontConfig'
-import { ACCOUNT_SKIN_REGISTRY, type AreaSkin } from './registry.generated'
+import { ACCOUNT_SKIN_METADATA, ACCOUNT_SKIN_REGISTRY, type AreaSkin } from './registry.generated'
 
 export type AccountSkin = AreaSkin
 
@@ -21,7 +22,7 @@ export async function resolveAccountSkin(): Promise<AccountSkin | null> {
   const requestHost = headersList.get('host') ?? undefined
   const config = await getStorefrontConfigForServer(locale, requestHost)
   const id = config?.theme
-  if (!id) return null
+  if (!id || !isSkinEnabled(ACCOUNT_SKIN_METADATA[id], config)) return null
   return ACCOUNT_SKIN_REGISTRY[id] ?? null
 }
 

@@ -1,12 +1,15 @@
 import { getLocale } from 'next-intl/server'
 import { headers } from 'next/headers'
-import { notFound, redirect } from 'next/navigation'
+import { notFound, permanentRedirect, redirect } from 'next/navigation'
 import { getSiteConfig } from '@/utils/siteMetadata'
+import { getRequestOrigin, clampDescription, buildBreadcrumbJsonLd, jsonLdScript } from '@/utils/seo'
 import { fetchRenderedCmsPage } from '@/services/storefrontCmsApi'
+import { resolveCmsBlocks } from '@/utils/resolveCmsBlocks'
 import { getStorefrontConfigForServer } from '@/utils/storefrontConfig'
 import { resolveStorefrontPage } from '@/components/storefront/themes/resolve'
 import DynamicPage from '@views/storefront/DynamicPage'
 import type { Metadata } from 'next'
+import { getStorefrontServerProvider } from '@/extensions/storefrontServer'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +18,7 @@ const RESERVED_ASSET_SLUGS = new Set([
   'favicon.ico',
   'robots.txt',
   'sitemap.xml',
+  'llms.txt',
   'manifest.webmanifest',
   'site.webmanifest',
 ])
@@ -33,12 +37,30 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const locale = await getLocale()
   const requestHost = (await headers()).get('host') ?? undefined
   const config = await getStorefrontConfigForServer(locale, requestHost)
-  const [pageData, { site_name }] = await Promise.all([
+  const [pageData, { site_name }, origin] = await Promise.all([
     getPageData(slug, locale, requestHost, config?.languages),
     getSiteConfig(locale, requestHost),
+    getRequestOrigin(),
   ])
+  const provider = await getStorefrontServerProvider(config)
+  const presentation = provider?.cmsPresentation?.(slug, { config, locale, requestHost, origin })
+  if (presentation?.redirect) return { alternates: { canonical: origin || '/' }, robots: { index: false, follow: true } }
+  if (!pageData) return { title: 'Not found', robots: { index: false, follow: false } }
   const title = (pageData?.meta_title || pageData?.title || slug) as string
-  return { title: `${title} | ${site_name}` }
+  const description =
+    clampDescription((pageData?.meta_description || pageData?.excerpt) as string | undefined) ||
+    `${title} – ${site_name}`
+  const canonical = origin ? `${origin}/${slug}` : `/${slug}`
+  const images = presentation?.images
+
+  return {
+    // Imported SEO titles may already include the site name.
+    title: title.toLowerCase().includes(site_name.toLowerCase()) ? { absolute: title } : title,
+    description,
+    alternates: { canonical },
+    openGraph: { type: 'website', title, description, url: canonical, siteName: site_name, images },
+    twitter: { card: 'summary_large_image', title, description, images: images?.map(image => image.url) },
+  }
 }
 
 const RESERVED_SLUGS = ['admin', 'account', 'auth'] as const
@@ -57,14 +79,22 @@ export default async function StorefrontSlugPage({ params }: Props) {
   const locale = await getLocale()
   const requestHost = (await headers()).get('host') ?? undefined
   const config = await getStorefrontConfigForServer(locale, requestHost)
-  const pageData = await getPageData(slug, locale, requestHost, config?.languages)
-  if (!pageData || !pageData.blocks?.length) {
+  const provider = await getStorefrontServerProvider(config)
+  const presentation = provider?.cmsPresentation?.(slug, { config, locale, requestHost, origin: await getRequestOrigin() })
+  if (presentation?.redirect) permanentRedirect(presentation.redirect)
+  if (presentation?.notFound) notFound()
+  const rawPageData = await getPageData(slug, locale, requestHost, config?.languages)
+  if (!rawPageData || !rawPageData.blocks?.length) {
     notFound()
   }
+  const pageData = await resolveCmsBlocks(rawPageData, requestHost, locale)
+  const breadcrumb = presentation?.breadcrumbs?.length ? (
+    <script type='application/ld+json' dangerouslySetInnerHTML={{ __html: jsonLdScript(buildBreadcrumbJsonLd(await getRequestOrigin(), presentation.breadcrumbs)) }} />
+  ) : null
 
   const Override = await resolveStorefrontPage('cms')
   if (Override) {
-    return <Override pageData={pageData} locale={locale} slug={slug} />
+    return <>{breadcrumb}<Override pageData={pageData} locale={locale} slug={slug} /></>
   }
-  return <DynamicPage pageData={pageData} locale={locale} />
+  return <>{breadcrumb}<DynamicPage pageData={pageData} locale={locale} /></>
 }
