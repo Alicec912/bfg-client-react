@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 test('renders the login page and account recovery link', async ({ page }) => {
   await page.goto('/auth/login')
 
-  await expect(page.getByRole('heading', { name: /^Welcome/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
   await expect(page.getByPlaceholder('Enter your email or username')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Forgot password?' })).toHaveAttribute(
     'href',
