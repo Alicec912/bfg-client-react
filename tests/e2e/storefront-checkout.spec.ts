@@ -58,14 +58,14 @@ async function mockCheckoutDependencies(page: Page) {
 }
 
 async function fillGuestContact(page: Page, includeAddress = true) {
-  await page.getByPlaceholder('Email').fill('guest@example.com')
-  await page.getByPlaceholder('First name (optional)').fill('Alice')
-  await page.getByPlaceholder('Last name').fill('Shopper')
-  await page.getByPlaceholder('Phone').fill('0211234567')
+  await page.getByPlaceholder('Email or mobile phone number', { exact: true }).fill('guest@example.com')
+  await page.getByPlaceholder('First name (optional)', { exact: true }).fill('Alice')
+  await page.getByPlaceholder('Last name', { exact: true }).fill('Shopper')
+  await page.getByPlaceholder('Phone', { exact: true }).fill('0211234567')
   if (includeAddress) {
-    await page.getByPlaceholder('Address').fill('10 Queen Street')
-    await page.getByPlaceholder('City').fill('Auckland')
-    await page.getByPlaceholder('ZIP code').fill('1010')
+    await page.getByPlaceholder('Address', { exact: true }).fill('10 Queen Street')
+    await page.getByPlaceholder('City', { exact: true }).fill('Auckland')
+    await page.getByPlaceholder('ZIP code', { exact: true }).fill('1010')
   }
 }
 
@@ -118,7 +118,7 @@ test('places a pickup order without shipping address or freight fields', async (
   await page.goto('/checkout')
   await page.getByText('Pick up at Auckland Depot').click()
   await expect(page.getByRole('heading', { name: 'Who is collecting' })).toBeVisible()
-  await expect(page.getByPlaceholder('Address')).toHaveCount(0)
+  await expect(page.getByPlaceholder('Address', { exact: true })).toHaveCount(0)
   await fillGuestContact(page, false)
   await page.getByRole('button', { name: 'Place order' }).click()
 

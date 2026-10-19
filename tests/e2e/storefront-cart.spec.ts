@@ -36,7 +36,7 @@ test('loads a guest cart, persists its signed token, and uses the API price prev
 
   await expect(page.getByRole('heading', { name: 'Shopping Cart' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'BFG USB-C Sensor Kit' })).toBeVisible()
-  await expect(page.getByText('NZ$49.00')).toBeVisible()
+  await expect(page.locator('.sf-cart-summary').getByText('NZ$49.00', { exact: true })).toBeVisible()
   await expect.poll(() => previewHeader).toBe('guest-cart-token')
   expect(await page.evaluate(() => Object.entries(localStorage)
     .find(([key]) => key.startsWith('bfg_guest_cart_token:'))?.[1])).toBe('guest-cart-token')
