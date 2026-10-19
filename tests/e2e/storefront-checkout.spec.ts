@@ -65,6 +65,7 @@ async function fillGuestContact(page: Page, includeAddress = true) {
   if (includeAddress) {
     await page.getByPlaceholder('Address', { exact: true }).fill('10 Queen Street')
     await page.getByPlaceholder('City', { exact: true }).fill('Auckland')
+    await page.getByPlaceholder('State', { exact: true }).fill('Auckland')
     await page.getByPlaceholder('ZIP code', { exact: true }).fill('1010')
   }
 }
