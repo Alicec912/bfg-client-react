@@ -48,7 +48,7 @@ test('redirects an unauthenticated admin visitor to login', async ({ page }) => 
 test('prevents registration when the passwords do not match', async ({ page }) => {
   let registrationRequests = 0
 
-  await page.route('**/api/v1/store/auth/register/', route => {
+  await page.route('**/api/v1/**/register/', route => {
     registrationRequests += 1
     return route.fulfill({ status: 201, contentType: 'application/json', body: '{}' })
   })

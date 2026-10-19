@@ -65,7 +65,8 @@ test('exchanges the SSO code, stores workspace credentials, and follows the serv
     })
   })
 
-  await page.goto('/auth/sso?code=one-time-code&next=%2Funknown')
+  // The exchange response controls the landing page, not a caller-supplied URL parameter.
+  await page.goto('/auth/sso?code=one-time-code&next=%2Faccount')
 
   await expect(page).toHaveURL(/\/admin\/dashboard$/)
   expect(requestBody).toEqual({ code: 'one-time-code' })
