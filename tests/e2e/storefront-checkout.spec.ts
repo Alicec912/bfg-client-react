@@ -69,6 +69,11 @@ async function fillGuestContact(page: Page, includeAddress = true) {
   }
 }
 
+async function selectPaymentGateway(page: Page, name: string) {
+  await page.getByRole('radio', { name }).check()
+  await expect(page.getByRole('button', { name: 'Place order' })).toBeEnabled()
+}
+
 test.beforeEach(async ({ page }) => {
   await mockCheckoutDependencies(page)
 })
@@ -85,6 +90,7 @@ test('places a guest delivery order with the selected freight service', async ({
 
   await page.goto('/checkout')
   await fillGuestContact(page)
+  await selectPaymentGateway(page, 'Bank transfer')
   await page.getByRole('button', { name: 'Place order' }).click()
 
   await expect(page).toHaveURL(/\/checkout\/success\?method=bank_transfer$/)
@@ -120,6 +126,7 @@ test('places a pickup order without shipping address or freight fields', async (
   await expect(page.getByRole('heading', { name: 'Who is collecting' })).toBeVisible()
   await expect(page.getByPlaceholder('Address', { exact: true })).toHaveCount(0)
   await fillGuestContact(page, false)
+  await selectPaymentGateway(page, 'Pay when collecting')
   await page.getByRole('button', { name: 'Place order' }).click()
 
   await expect(page).toHaveURL(/\/checkout\/success\?method=pay_in_store$/)
@@ -145,6 +152,7 @@ test('keeps the cart on checkout and surfaces an API stock error', async ({ page
 
   await page.goto('/checkout')
   await fillGuestContact(page)
+  await selectPaymentGateway(page, 'Bank transfer')
   page.once('dialog', async dialog => {
     expect(dialog.message()).toBe('The requested quantity is no longer available.')
     await dialog.accept()
